@@ -427,7 +427,7 @@ function shotsPrompt(scene, density, bible, prevSummary, segment, refs, styleDir
 ${dens}
 
 각 샷에 전문 촬영 정보를 채운다. 샷넘버는 "${scene.id}A","${scene.id}B" 식.
-english_prompt: Runway/Kling/Sora 같은 AI 영상 생성기에 바로 붙여넣을 시네마틱 영어 프롬프트(피사체·동작·카메라무빙·렌즈/샷사이즈·조명·분위기·스타일). 영어로만.
+english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙여넣을 시네마틱 영어 프롬프트. [영상용 핵심] 정지 이미지가 아니라 수 초짜리 '클립'을 묘사한다 — 클립이 진행되는 동안의 동작 변화·카메라 무빙·연기 흐름을 동사로 서술(예: "as the camera slowly pushes in, his grip tightens and her expression breaks"). 피사체·동작·카메라무빙·렌즈/샷사이즈·조명·분위기·작화 스타일을 한 문단으로. 시각 묘사는 영어로.
 
 순수 JSON만 출력. 코드펜스/설명 금지.
 {
@@ -498,7 +498,11 @@ function extractJSON(text){
   let t=String(text).trim().replace(/^```(json)?/i,"").replace(/```$/,"").trim();
   const s=t.indexOf("{"),e=t.lastIndexOf("}");
   if(s>=0&&e>s) t=t.slice(s,e+1);
-  return JSON.parse(t);
+  try{ return JSON.parse(t); }
+  catch(e){
+    // LLM이 흔히 내는 trailing comma 보정 후 재시도 (정상 JSON은 위에서 이미 통과)
+    return JSON.parse(t.replace(/,(\s*[}\]])/g,"$1"));
+  }
 }
 
 /* ============ SVG storyboard renderer ============ */
@@ -796,7 +800,7 @@ $("genBtn").addEventListener("click",async()=>{
     if(bd.style_bible) proj.bible=String(bd.style_bible);   // 메모리 자동 갱신
     bd.scenes.forEach((sc,i)=>{ sc.id=startId+i; });          // 번호 연속 보장
     // PASS 2: shots per new scene (메모리 + 이전 씬 컨텍스트 전달)
-    const newScenes=[];
+    const newScenes=[]; const failedScenes=[];
     for(let i=0;i<bd.scenes.length;i++){
       const sc=bd.scenes[i];
       setProg(10+Math.round(85*(i/bd.scenes.length)),`샷 콘티 생성 중 (${i+1}/${bd.scenes.length}): ${sc.slug||("씬 "+sc.id)}`);
@@ -805,7 +809,8 @@ $("genBtn").addEventListener("click",async()=>{
       try{
         const sr=extractJSON(await callAPI(provider,key,model,shotsPrompt(sc,density,proj.bible,ctxPrev,segment,refs,styleDir)));
         shots=Array.isArray(sr.shots)?sr.shots:[];
-      }catch(e){ shots=[{shot_number:sc.id+"A",shot_size:"MWS",action:(sc.synopsis||""),composition:"자동 분해 실패 — 씬 요약 기반",english_prompt:"",characters:[]}]; }
+        if(!shots.length) throw new Error("빈 결과");
+      }catch(e){ failedScenes.push(sc.id); shots=[{shot_number:sc.id+"A",shot_size:"MWS",action:(sc.synopsis||""),composition:"⚠ 이 씬 샷 생성 실패 — 다시 시도하세요",english_prompt:"",characters:[]}]; }
       newScenes.push({id:sc.id,slug:sc.slug,synopsis:sc.synopsis,shots});
     }
     // 프로젝트에 누적 저장
@@ -820,6 +825,7 @@ $("genBtn").addEventListener("click",async()=>{
     setProg(100,`완료 ✓ 이번에 ${newScenes.length}씬 추가 · 누적 ${proj.scenes.length}씬`);
     setTimeout(()=>{$("prog").style.display="none";},2500);
     $("status").textContent="완료 ✓ 추가됨";
+    if(failedScenes.length) $("err").textContent=`참고: 씬 ${failedScenes.join(", ")}번의 샷 생성에 실패했습니다(서버 혼잡/형식 오류일 수 있음). 해당 씬만 콘티를 비우고 대본을 다시 넣어 재생성하세요.`;
     $("script").value="";   // 다음 조각 입력을 위해 비움
   }catch(e){
     console.error(e); $("err").textContent="오류: "+e.message; $("prog").style.display="none"; $("status").textContent="";
