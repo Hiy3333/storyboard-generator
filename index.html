@@ -449,8 +449,9 @@ english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙
   (6) 컬러 팔레트/톤,
   (7) 작화/매체 스타일 토큰(위 [영상 스타일] 반영),
   (8) 감정·분위기,
-  (9) 모션 다이내믹스 — 움직임의 속도/방향(예: slow-motion, drifting, sudden), 그리고 클립의 시작→끝 변화.
-위 [대상 씬]의 구도(composition)와 액션(action) 내용을 이 영어 묘사 안에 자연스럽게 포함시켜라.
+  (9) 모션 다이내믹스 — 움직임의 속도/방향(예: slow-motion, drifting, sudden), 그리고 클립의 시작→끝 변화,
+  (10) 환경음·효과음 — [대상 씬]의 음향(audio)을 영어로 번역해 "ambient audio: ..." 형태로 묘사(예: crashing waves, cold howling wind, tense string score). 단, 인물의 대사(말)는 여기에 넣지 마라.
+위 [대상 씬]의 구도(composition)·액션(action)·음향(audio)을 이 영어 묘사 안에 자연스럽게(전부 영어로) 포함시켜라.
 [언어 규칙 — 매우 중요] english_prompt는 100% 영어로만 작성한다. 한자·중국어·일본어 문자(예: 静止, 镜头)나 한글을 절대 섞지 마라 — 반드시 영어 단어를 써라(예: '静止' 금지 → 'static camera', '镜头' 금지 → 'shot/lens'). 한국어 대사는 시스템이 별도로 처리하므로 english_prompt 안에는 넣지 않는다.
 
 순수 JSON만 출력. 코드펜스/설명 금지.
@@ -711,8 +712,9 @@ function enrichPrompt(sh, rs){
   parts.push(qualityBoost(rs));                                   // 부스터
   // 구도·액션은 위 영어 묘사(english_prompt)에 이미 영어로 포함되므로 한국어 중복을 넣지 않는다(영상툴 품질 저하 방지).
   // 대사·음향만 음성/자막 지원 툴용으로 영어 라벨과 함께 맨 뒤에 둔다.
+  // 음향(SFX)은 모델이 english_prompt 안에 영어로 녹이므로 여기서 한국어로 덧붙이지 않는다.
+  // 대사만은 캐릭터가 실제로 말하는 한국어이므로 그대로 유지한다.
   if(sh.dialogue && !p.includes(sh.dialogue)) parts.push('The characters speak these exact lines ALOUD in KOREAN (Korean-language spoken dialogue with natural lip-sync, audio in Korean): '+trim(sh.dialogue));
-  if(sh.audio && !p.includes(sh.audio)) parts.push("Sound/SFX: "+trim(sh.audio));
   return parts.map(x=>trim(x)).filter(Boolean).join(". ")+".";
 }
 const STYLE_LABEL={live:"🎬 실사",anime:"🎨 애니메이션",bl:"💕 BL 숏폼"};
