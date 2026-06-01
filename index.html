@@ -245,7 +245,19 @@ refreshProviderUI();
 /* ============ PROJECTS (저장/전환/기억) ============ */
 const PROJ_KEY="sbg_projects_v1";
 function loadStore(){try{return JSON.parse(localStorage.getItem(PROJ_KEY))||{projects:{},activeId:null};}catch(e){return{projects:{},activeId:null};}}
-function saveStore(){localStorage.setItem(PROJ_KEY,JSON.stringify(STORE));}
+function saveStore(){
+  try{ localStorage.setItem(PROJ_KEY,JSON.stringify(STORE)); }
+  catch(e){ try{$("err").textContent="저장 공간이 가득 찼습니다(브라우저 용량 초과). 오래된 프로젝트를 삭제하거나 PDF로 내보낸 뒤 비우세요. (이번 작업은 화면엔 있지만 저장되지 않았을 수 있습니다)";}catch(_){} }
+}
+function copyText(t,btn){
+  const done=()=>{const o=btn.textContent;btn.textContent="복사됨!";setTimeout(()=>btn.textContent=o||"복사",1200);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done).catch(()=>fallbackCopy(t,done)); }
+  else fallbackCopy(t,done);
+}
+function fallbackCopy(t,done){
+  try{const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);done&&done();}
+  catch(e){ alert("복사 실패 — 프롬프트를 직접 선택해 복사하세요."); }
+}
 let STORE=loadStore();
 function uid(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function newProject(name){
@@ -394,6 +406,7 @@ ${refs?"[중요 — 사용자 지정] 아래 [사용자 지정 등장인물/배�
 1) [새 대본 조각]을 촬영용 씬으로 분해한다. 씬 = 시간/장소 연속 단위. 씬 번호(id)는 ${startId}부터 시작.
 2) 새 대본 조각을 처음부터 끝까지 빠짐없이 다룬다.
 3) 각 씬 beats에 모든 행동·사건·대사 포인트를 순서대로 나열(빠짐없이).
+   [대사만 있는 경우] 지문/액션이 없고 대사만 주어져도, 대사의 맥락·감정·관계로부터 장소·시간·인물의 동작·표정·분위기를 적극적으로 추론해 시각적 비트로 채운다(예: 화자/리액션/거리감).
 4) 슬러그라인은 "INT./EXT. 장소 - 시간".
 5) "style_bible"을 갱신해 반환: 기존 내용 + 사용자 지정 설정을 유지하고 새로 등장한 인물/장소/설정만 추가. 포함 항목 — 매체(실사/애니메이션) / 작품 톤&무드 / 비주얼·조명·색감·카메라 경향(영상 프롬프트 일관성용) / 등장인물(이름+외형+성격, 한 번 정하면 고정) / 반복 배경 / 영어 프롬프트 공통 스타일 토큰(위 [영상 스타일]의 토큰을 반드시 반영). 한국어로 쓰되 영어 스타일 토큰은 영어로.
 
@@ -416,7 +429,7 @@ ${segment}`;
 }
 function shotsPrompt(scene, density, bible, prevSummary, segment, refs, styleDir){
   const dens = density==="detailed"
-    ? "이 씬의 모든 비트(행동·대사·반응)를 각각 별도의 샷으로 분해하라. 대화 장면은 인물별 샷/리버스 샷/투샷으로 나누고, 중요한 동작·소품은 인서트 샷을 추가하라. 실제 촬영 가능한 촘촘한 샷 리스트여야 한다."
+    ? "이 씬의 모든 비트(행동·대사·반응)를 각각 별도의 샷으로 분해하라. 대화 장면은 인물별 샷/리버스 샷/투샷으로 나누고, 중요한 동작·소품은 인서트 샷을 추가하라. 실제 촬영 가능한 촘촘한 샷 리스트여야 한다. 대본에 지문/액션이 없고 대사만 있어도, 화자·감정·관계·서브텍스트로부터 장소·인물 동작·표정·카메라를 적극 추론해 시각화하라(밋밋한 토킹헤드 금지)."
     : density==="light"
     ? "이 씬의 핵심만 1~3개의 샷으로 압축하라."
     : "이 씬을 자연스러운 편집 흐름의 샷들로 나눠라(과하지도 부족하지도 않게).";
@@ -693,11 +706,11 @@ function enrichPrompt(sh, rs){
   const parts=[];
   if(p) parts.push(p);
   if(cam.length) parts.push("Camera: "+cam.join(", "));
-  parts.push(qualityBoost(rs));                                   // 부스터 (영어 묘사 직후)
-  if(sh.composition && !p.includes(sh.composition)) parts.push("Composition: "+trim(sh.composition));
-  if(sh.action && !p.includes(sh.action)) parts.push("Action: "+trim(sh.action));
-  if(sh.audio && !p.includes(sh.audio)) parts.push("Sound design: "+trim(sh.audio));
-  if(sh.dialogue && !p.includes(sh.dialogue)) parts.push("Spoken dialogue — "+trim(sh.dialogue));
+  parts.push(qualityBoost(rs));                                   // 부스터
+  // 구도·액션은 위 영어 묘사(english_prompt)에 이미 영어로 포함되므로 한국어 중복을 넣지 않는다(영상툴 품질 저하 방지).
+  // 대사·음향만 음성/자막 지원 툴용으로 영어 라벨과 함께 맨 뒤에 둔다.
+  if(sh.dialogue && !p.includes(sh.dialogue)) parts.push('Spoken dialogue (for audio/subtitle): '+trim(sh.dialogue));
+  if(sh.audio && !p.includes(sh.audio)) parts.push("Sound/SFX: "+trim(sh.audio));
   return parts.map(x=>trim(x)).filter(Boolean).join(". ")+".";
 }
 const STYLE_LABEL={live:"🎬 실사",anime:"🎨 애니메이션",bl:"💕 BL 숏폼"};
@@ -750,9 +763,9 @@ async function renderBoard(data){
           </div>
         </div>`;
       const pb=card.querySelector(".copy-btn.pos");
-      pb.onclick=()=>{navigator.clipboard.writeText(fullPrompt);pb.textContent="복사됨!";setTimeout(()=>pb.textContent="복사",1200);};
+      pb.onclick=()=>copyText(fullPrompt,pb);
       const nb=card.querySelector(".copy-btn.negbtn");
-      nb.onclick=()=>{navigator.clipboard.writeText(neg);nb.textContent="복사됨!";setTimeout(()=>nb.textContent="복사",1200);};
+      nb.onclick=()=>copyText(neg,nb);
       board.appendChild(card);
     }
   }
@@ -858,7 +871,13 @@ $("genBtn").addEventListener("click",async()=>{
     if(failedScenes.length) $("err").textContent=`참고: 씬 ${failedScenes.join(", ")}번의 샷 생성에 실패했습니다(서버 혼잡/형식 오류일 수 있음). 해당 씬만 콘티를 비우고 대본을 다시 넣어 재생성하세요.`;
     $("script").value="";   // 다음 조각 입력을 위해 비움
   }catch(e){
-    console.error(e); $("err").textContent="오류: "+e.message; $("prog").style.display="none"; $("status").textContent="";
+    console.error(e);
+    let msg=e.message||String(e);
+    if(/Failed to fetch|NetworkError|load failed/i.test(msg)) msg="네트워크/CORS 오류 — 인터넷 연결을 확인하세요. (로컬 파일 file://로 열면 막힐 수 있으니 배포된 https 주소에서 사용하세요. Claude가 막히면 Gemini로 바꿔보세요.)";
+    else if(/\b401\b|invalid|unauthor/i.test(msg)) msg="인증 오류 — API 키가 올바른지 확인하세요. ("+msg+")";
+    else if(/\b404\b|model/i.test(msg)) msg="모델을 찾을 수 없음 — 모델 선택에서 본인 키로 사용 가능한 모델을 고르세요. ("+msg+")";
+    else if(/\b429\b|rate/i.test(msg)) msg="요청 한도 초과(429) — 잠시 후 다시 시도하세요.";
+    $("err").textContent="오류: "+msg; $("prog").style.display="none"; $("status").textContent="";
   }finally{ $("genBtn").disabled=false; }
 });
 
