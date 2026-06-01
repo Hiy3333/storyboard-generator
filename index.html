@@ -66,8 +66,6 @@
   .prompt-box code{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
   .copy-btn{background:#333;color:#ccc;border:1px solid #555;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;}
   .copy-btn:hover{background:#444;}
-  .prompt-box.neg{background:#2c2422;margin-top:8px;}
-  .prompt-box.neg code{color:#d9c9c2;}
   details.adv summary{cursor:pointer;font-size:13px;color:var(--muted);}
   .art-gallery{display:flex;gap:8px;flex-wrap:wrap;}
   .art-sw{cursor:pointer;border:2px solid transparent;border-radius:9px;padding:4px;text-align:center;background:#fff;width:94px;transition:border-color .15s;}
@@ -450,8 +448,10 @@ english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙
   (5) 조명 — 방향·질감·색온도·시간대,
   (6) 컬러 팔레트/톤,
   (7) 작화/매체 스타일 토큰(위 [영상 스타일] 반영),
-  (8) 감정·분위기.
-위 [대상 씬]의 구도(composition)와 액션(action) 내용을 이 영어 묘사 안에 자연스럽게 포함시켜라. 시각 묘사는 영어로.
+  (8) 감정·분위기,
+  (9) 모션 다이내믹스 — 움직임의 속도/방향(예: slow-motion, drifting, sudden), 그리고 클립의 시작→끝 변화.
+위 [대상 씬]의 구도(composition)와 액션(action) 내용을 이 영어 묘사 안에 자연스럽게 포함시켜라.
+[언어 규칙 — 매우 중요] english_prompt는 100% 영어로만 작성한다. 한자·중국어·일본어 문자(예: 静止, 镜头)나 한글을 절대 섞지 마라 — 반드시 영어 단어를 써라(예: '静止' 금지 → 'static camera', '镜头' 금지 → 'shot/lens'). 한국어 대사는 시스템이 별도로 처리하므로 english_prompt 안에는 넣지 않는다.
 
 순수 JSON만 출력. 코드펜스/설명 금지.
 {
@@ -687,15 +687,17 @@ function qualityBoost(rs){
   if(rs==="live") return "photorealistic, ultra-detailed, cinematic color grading, naturalistic lighting, shallow depth of field, shot on ARRI Alexa, razor-sharp focus, subtle film grain, 4K, professional cinematography";
   return "masterpiece, best quality, ultra-detailed, clean crisp lineart, vibrant consistent color palette, smooth fluid character animation, expressive emotive acting, cinematic lighting, professional studio anime production, 4K";
 }
-// 매체별 네거티브 프롬프트 (네거티브 입력란이 있는 영상툴용)
-function negativePromptFor(rs){
-  const base="low quality, worst quality, blurry, lowres, distorted, deformed, bad anatomy, extra limbs, extra fingers, fused fingers, malformed hands, mutated, disfigured face, asymmetrical eyes, watermark, signature, text, caption, logo, jpeg artifacts, flickering, morphing, warping, duplicate frames, cropped";
-  if(rs==="live") return base+", cartoon, anime, illustration, 3d render, cgi, plastic skin, waxy skin, uncanny valley";
-  return base+", off-model face, inconsistent character design, stiff jerky motion, chibi proportions, ugly, child, underage, photorealistic";
+// english_prompt에서 한자/중국어/일본어·전각 문자 글리치를 제거 (예: '静止camera' → 'camera')
+function stripCJK(s){
+  return String(s)
+    .replace(/[　-〿぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿＀-￯]/g," ")
+    .replace(/\s+([,.;:!?])/g,"$1")
+    .replace(/\s{2,}/g," ")
+    .trim();
 }
 // 모든 항목(구도·카메라·음향·대사) + 부스터를 영어 영상 프롬프트로 합친다
 function enrichPrompt(sh, rs){
-  const p=(sh.english_prompt||"").trim();
+  const p=stripCJK((sh.english_prompt||"").trim());
   const lp=p.toLowerCase();
   const trim=s=>String(s).replace(/[.\s]+$/,"");
   const cam=[];
@@ -718,7 +720,6 @@ async function renderBoard(data){
   CURRENT=data;
   const aspect=data.renderStyle==="bl"?"9:16":"16:9";   // BL → 세로 프레임
   let SW=640,SH=360; if(aspect==="9:16"){SW=405;SH=720;}
-  const neg=negativePromptFor(data.renderStyle);
   const board=$("board"); board.innerHTML="";
   const totalShots=data.scenes.reduce((a,s)=>a+(s.shots?s.shots.length:0),0);
   const styleBadge=`${STYLE_LABEL[data.renderStyle]||""}${aspect==="9:16"?" · 세로":""}`;
@@ -754,18 +755,12 @@ async function renderBoard(data){
           ${sh.dialogue?`<div class="field dlg"><span class="lbl">대사</span>“${esc(sh.dialogue)}”</div>`:""}
           ${fld("음향",sh.audio)}
           <div class="prompt-box">
-            <div class="plabel"><span>✅ 영상 생성용 프롬프트 (positive)</span><button class="copy-btn pos">복사</button></div>
+            <div class="plabel"><span>🎬 영상 생성용 프롬프트</span><button class="copy-btn pos">복사</button></div>
             <code>${esc(fullPrompt)}</code>
-          </div>
-          <div class="prompt-box neg">
-            <div class="plabel"><span>🚫 네거티브 프롬프트 (입력란 있는 툴에)</span><button class="copy-btn negbtn">복사</button></div>
-            <code>${esc(neg)}</code>
           </div>
         </div>`;
       const pb=card.querySelector(".copy-btn.pos");
       pb.onclick=()=>copyText(fullPrompt,pb);
-      const nb=card.querySelector(".copy-btn.negbtn");
-      nb.onclick=()=>copyText(neg,nb);
       board.appendChild(card);
     }
   }
