@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스토리보드 생성기 — 촬영용 콘티</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --bg:#eceae6; --panel:#fff; --ink:#161616; --line:#d6d4cf; --soft:#f7f6f3; --muted:#6a6a66;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;}
+  header{padding:20px 28px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
+  header h1{font-size:19px;margin:0;letter-spacing:-0.3px;}
+  header .sub{color:var(--muted);font-size:13px;}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 90px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:18px;}
+  .panel h2{font-size:13px;margin:0 0 14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;}
+  .row{display:flex;gap:14px;flex-wrap:wrap;}
+  .row>div{flex:1;min-width:170px;}
+  select,input,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;background:var(--soft);color:var(--ink);}
+  textarea{min-height:260px;resize:vertical;line-height:1.65;font-size:14px;}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px;}
+  .hint a{color:#3060c0;}
+  button{font-family:inherit;font-weight:600;cursor:pointer;border:none;border-radius:8px;padding:11px 18px;font-size:14px;}
+  .btn-primary{background:var(--ink);color:#fff;}
+  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+  .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+  #status{font-size:13px;color:var(--muted);}
+  .err{color:#c0392b;font-size:13px;white-space:pre-wrap;margin-top:10px;}
+  /* progress */
+  #prog{display:none;margin-top:12px;}
+  #prog .bar{height:8px;background:#e2e0db;border-radius:6px;overflow:hidden;}
+  #prog .fill{height:100%;width:0;background:var(--ink);transition:width .3s;}
+  #prog .ptxt{font-size:12px;color:var(--muted);margin-top:6px;}
+  /* board */
+  #board{margin-top:8px;}
+  .board-head{display:flex;justify-content:space-between;align-items:flex-end;margin:6px 0 16px;flex-wrap:wrap;gap:12px;}
+  .board-head h2{font-size:22px;margin:0;letter-spacing:-0.4px;}
+  .board-head .logline{font-size:13px;color:var(--muted);margin-top:4px;max-width:640px;}
+  .board-head .stat{font-size:12px;color:var(--muted);}
+  .scene-sep{margin:26px 0 12px;padding:8px 14px;background:#161616;color:#fff;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:.3px;display:flex;justify-content:space-between;align-items:center;}
+  .scene-sep .syn{font-weight:400;font-size:12px;color:#bdbdbd;max-width:60%;text-align:right;}
+  .shot-card{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;display:grid;grid-template-columns:380px 1fr;}
+  .shot-card.vert{grid-template-columns:250px 1fr;}
+  .shot-card.sq{grid-template-columns:320px 1fr;}
+  @media(max-width:760px){.shot-card,.shot-card.vert,.shot-card.sq{grid-template-columns:1fr;}.shot-card.vert .shot-frame img{max-width:250px;margin:0 auto;}}
+  .shot-frame{border-right:1px solid var(--line);background:#fff;}
+  .shot-frame img{display:block;width:100%;height:auto;}
+  .shot-body{padding:14px 16px;}
+  .shot-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
+  .shot-no{font-size:15px;font-weight:800;background:#161616;color:#fff;border-radius:6px;padding:2px 9px;letter-spacing:.5px;}
+  .tag{font-size:11.5px;background:#f0efea;border:1px solid var(--line);border-radius:6px;padding:2px 8px;}
+  .tag.size{background:#161616;color:#fff;border-color:#161616;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin:10px 0;font-size:12.5px;}
+  .grid2 .k{color:var(--muted);}
+  .field{margin:8px 0;font-size:13.5px;}
+  .field .lbl{font-size:11px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:2px;}
+  .field.dlg{border-left:3px solid #161616;padding-left:10px;font-style:italic;}
+  .prompt-box{background:#161616;color:#eee;border-radius:8px;padding:10px 12px;margin-top:10px;}
+  .prompt-box .plabel{font-size:10.5px;letter-spacing:1px;color:#999;text-transform:uppercase;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;}
+  .prompt-box code{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+  .copy-btn{background:#333;color:#ccc;border:1px solid #555;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;}
+  .copy-btn:hover{background:#444;}
+  details.adv summary{cursor:pointer;font-size:13px;color:var(--muted);}
+  .art-gallery{display:flex;gap:8px;flex-wrap:wrap;}
+  .art-sw{cursor:pointer;border:2px solid transparent;border-radius:9px;padding:4px;text-align:center;background:#fff;width:94px;transition:border-color .15s;}
+  .art-sw:hover{border-color:#bbb;}
+  .art-sw.sel{border-color:#161616;}
+  .art-sw svg{display:block;width:100%;height:auto;border-radius:6px;}
+  .art-sw span{font-size:10.5px;display:block;margin-top:3px;color:#333;line-height:1.25;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 스토리보드 생성기</h1>
+  <span class="sub">긴 대본 → 씬 분해 → 촬영용 샷 콘티(흑백) + 영상 생성 영어 프롬프트 · PDF</span>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>1. 프로젝트</h2>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:2;">
+        <label>현재 프로젝트</label>
+        <select id="projSel"></select>
+      </div>
+      <div style="display:flex;gap:8px;flex:none;">
+        <button class="btn-ghost" id="newProjBtn">+ 새 프로젝트</button>
+        <button class="btn-ghost" id="renameProjBtn">이름변경</button>
+        <button class="btn-ghost" id="delProjBtn">삭제</button>
+      </div>
+    </div>
+    <div class="hint" id="projInfo"></div>
+    <div class="row" style="margin-top:12px;">
+      <div>
+        <label>영상 스타일</label>
+        <select id="renderStyle">
+          <option value="live">🎬 실사 (라이브액션)</option>
+          <option value="anime">🎨 애니메이션 (일반)</option>
+          <option value="bl">💕 BL 숏폼 드라마 (애니/웹툰)</option>
+        </select>
+        <div class="hint">생성되는 영어 프롬프트가 이 스타일로 나옵니다. 이미지/영상 생성 AI에 그대로 사용. (BL 선택 시 콘티 프레임은 세로로 그려집니다)</div>
+      </div>
+      <div>
+        <label>그림체 (작화 톤)</label>
+        <select id="artStyle">
+          <option value="auto">자동 (스타일에 맡김)</option>
+          <option value="webtoon">감성 한국 웹툰풍</option>
+          <option value="shoujo">반짝이는 소녀만화풍</option>
+          <option value="cel">또렷한 셀 애니풍</option>
+          <option value="watercolor">부드러운 수채 톤</option>
+          <option value="semireal">세미리얼 극화풍</option>
+          <option value="retro90s">빈티지 90s 애니</option>
+        </select>
+        <div class="hint">애니/BL 선택 시 적용. 영어 프롬프트에 작화 토큰이 들어갑니다. 아래 미리보기를 클릭해도 선택됩니다.</div>
+      </div>
+    </div>
+    <div id="artGallery" class="art-gallery" style="margin-top:10px;"></div>
+    <div id="artTokens" class="hint" style="margin-top:6px;"></div>
+    <div class="row" style="margin-top:12px;">
+      <div>
+        <label>등장인물 (선택)</label>
+        <textarea id="cast" style="min-height:90px;" placeholder="비워둬도 됩니다. 넣으면 그 설정대로 만듭니다.&#10;예) 민수: 20대 후반 남자, 헝클어진 머리, 지친 표정&#10;지영: 20대 중반 여자, 단발, 밝지만 조심스러움"></textarea>
+      </div>
+      <div>
+        <label>배경 / 장소 (선택)</label>
+        <textarea id="setting" style="min-height:90px;" placeholder="비워둬도 됩니다. 넣으면 그 설정대로 만듭니다.&#10;예) 동네 카페: 작고 오래된, 큰 창, 따뜻한 조명&#10;도시: 비 자주 오는 90년대 분위기"></textarea>
+      </div>
+    </div>
+    <div class="actions"><button class="btn-ghost" id="saveRefsBtn">등장인물·배경 저장</button><span class="hint" id="refsSaved"></span></div>
+    <details class="adv" style="margin-top:12px;" id="bibleWrap">
+      <summary>🧠 스타일 메모리 — 톤·등장인물·비주얼(이어지는 기준)</summary>
+      <textarea id="bible" style="min-height:150px;margin-top:8px;" placeholder="첫 생성 후 자동으로 채워집니다. 직접 수정하면 이후에 추가하는 씬에 그대로 반영됩니다.&#10;예) 톤: 잔잔하고 쓸쓸함 / 비주얼: 차가운 블루 톤, 자연광, 핸드헬드 / 인물: 민수(20대 후반, 지친 표정)..."></textarea>
+      <div class="actions">
+        <button class="btn-ghost" id="saveBibleBtn">메모리 저장</button>
+        <span class="hint" id="bibleSaved"></span>
+      </div>
+      <div class="hint">여기 적힌 내용이 새 씬을 만들 때마다 모델에 전달되어 분위기·인물·룩이 일관되게 유지됩니다.</div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h2>2. 설정</h2>
+    <div class="row">
+      <div>
+        <label>AI 모델</label>
+        <select id="provider">
+          <option value="claude">Claude (Anthropic) — 추천</option>
+          <option value="gemini">Gemini (Google)</option>
+          <option value="openai">GPT (OpenAI)</option>
+        </select>
+        <div class="hint" id="keylink"></div>
+      </div>
+      <div>
+        <label>API 키</label>
+        <input id="apikey" type="password" placeholder="키 붙여넣기" autocomplete="off">
+        <div class="hint">키는 이 브라우저에만 저장 · 선택한 AI사로만 직접 전송됩니다.</div>
+      </div>
+    </div>
+    <details class="adv" style="margin-top:14px;">
+      <summary>고급 설정</summary>
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <label>모델 선택</label>
+          <select id="modelsel"></select>
+          <input id="modelid" type="text" placeholder="모델 ID 직접 입력" style="margin-top:8px;display:none;">
+          <div class="hint" id="modelhint"></div>
+        </div>
+        <div>
+          <label>샷 밀도</label>
+          <select id="density">
+            <option value="normal">표준 (씬당 핵심 샷)</option>
+            <option value="detailed" selected>상세 (모든 비트를 샷으로 — 촬영용)</option>
+            <option value="light">간략 (씬당 1~3샷)</option>
+          </select>
+          <div class="hint">상세: 대본의 모든 액션·대사를 빠짐없이 샷으로 분해.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h2>3. 대본 입력 (이 프로젝트에 이어붙임)</h2>
+    <textarea id="script" placeholder="새로 추가할 대본 조각을 붙여넣으세요. 한 씬만 넣어도 되고, 여러 씬을 넣어도 됩니다.&#10;이전에 넣은 씬들의 분위기·등장인물이 이어져서 일관되게 생성됩니다."></textarea>
+    <div class="actions">
+      <button class="btn-primary" id="genBtn">이어서 콘티 생성</button>
+      <button class="btn-ghost" id="sampleBtn">샘플 대본</button>
+      <button class="btn-ghost" id="clearScenesBtn">이 프로젝트 콘티 비우기</button>
+      <span id="status"></span>
+    </div>
+    <div id="prog"><div class="bar"><div class="fill" id="pfill"></div></div><div class="ptxt" id="ptxt"></div></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="board"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEY_STORE = "sbg_keys_v2";
+
+const PROVIDERS = {
+  claude:{label:"Claude",keyUrl:"https://console.anthropic.com/settings/keys",
+    models:["claude-sonnet-4-5","claude-opus-4-1","claude-3-5-sonnet-latest","claude-3-5-haiku-latest"]},
+  gemini:{label:"Gemini",keyUrl:"https://aistudio.google.com/apikey",
+    models:["gemini-2.0-flash","gemini-1.5-pro","gemini-1.5-flash"]},
+  openai:{label:"GPT",keyUrl:"https://platform.openai.com/api-keys",
+    models:["gpt-4o","gpt-4.1","gpt-4o-mini","gpt-4-turbo"]},
+};
+const CUSTOM="__custom__";
+function loadKeys(){try{return JSON.parse(localStorage.getItem(KEY_STORE))||{};}catch(e){return{};}}
+function saveKeys(o){localStorage.setItem(KEY_STORE,JSON.stringify(o));}
+function refreshProviderUI(){
+  const p=$("provider").value,cfg=PROVIDERS[p];
+  $("keylink").innerHTML=`키 발급: <a href="${cfg.keyUrl}" target="_blank" rel="noopener">${cfg.keyUrl.replace('https://','')}</a>`;
+  const sel=$("modelsel");
+  sel.innerHTML=cfg.models.map(m=>`<option value="${m}">${m}</option>`).join("")
+    +`<option value="${CUSTOM}">직접 입력…</option>`;
+  sel.value=cfg.models[0];
+  $("modelid").style.display="none"; $("modelid").value="";
+  $("modelhint").textContent="목록에서 모델을 고르거나 ‘직접 입력’을 선택하세요.";
+  $("apikey").value=loadKeys()[p]||"";
+}
+function syncModelInput(){
+  const custom=$("modelsel").value===CUSTOM;
+  $("modelid").style.display=custom?"block":"none";
+  if(custom) $("modelid").focus();
+}
+function currentModel(){
+  const v=$("modelsel").value;
+  return v===CUSTOM ? ($("modelid").value.trim()||PROVIDERS[$("provider").value].models[0]) : v;
+}
+$("provider").addEventListener("change",refreshProviderUI);
+$("modelsel").addEventListener("change",syncModelInput);
+$("apikey").addEventListener("change",()=>{const k=loadKeys();k[$("provider").value]=$("apikey").value.trim();saveKeys(k);});
+refreshProviderUI();
+
+/* ============ PROJECTS (저장/전환/기억) ============ */
+const PROJ_KEY="sbg_projects_v1";
+function loadStore(){try{return JSON.parse(localStorage.getItem(PROJ_KEY))||{projects:{},activeId:null};}catch(e){return{projects:{},activeId:null};}}
+function saveStore(){localStorage.setItem(PROJ_KEY,JSON.stringify(STORE));}
+let STORE=loadStore();
+function uid(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function newProject(name){
+  const id=uid();
+  STORE.projects[id]={id,name:name||"새 프로젝트",createdAt:Date.now(),updatedAt:Date.now(),bible:"",cast:"",setting:"",renderStyle:"live",artStyle:"auto",scenes:[],lastSceneId:0,scriptSoFar:""};
+  STORE.activeId=id; saveStore(); return id;
+}
+function activeProject(){
+  if(!STORE.activeId||!STORE.projects[STORE.activeId]){
+    const ids=Object.keys(STORE.projects);
+    if(ids.length) STORE.activeId=ids[0]; else newProject("내 첫 프로젝트");
+  }
+  return STORE.projects[STORE.activeId];
+}
+function refreshProjectUI(){
+  const p=activeProject(), sel=$("projSel"), ids=Object.keys(STORE.projects);
+  sel.innerHTML=ids.map(id=>`<option value="${id}">${esc(STORE.projects[id].name)}</option>`).join("");
+  sel.value=STORE.activeId;
+  const shots=p.scenes.reduce((a,s)=>a+(s.shots?s.shots.length:0),0);
+  $("projInfo").textContent=`누적 씬 ${p.scenes.length} · 샷 ${shots} · ${p.bible?"스타일 메모리 설정됨 🧠":"스타일 메모리 비어있음"}`;
+  $("bible").value=p.bible||"";
+  $("cast").value=p.cast||"";
+  $("setting").value=p.setting||"";
+  $("renderStyle").value=p.renderStyle||"live";
+  $("artStyle").value=p.artStyle||"auto";
+  updateArtSelection();
+}
+const ART_STYLES={
+  auto:"",
+  webtoon:"Korean webtoon style, refined glossy digital coloring, soft romantic shoujo aesthetic, clean delicate lineart",
+  shoujo:"shoujo manga style, sparkling glossy eyes, floral screentones, soft glow and sparkles, delicate romantic rendering",
+  cel:"crisp clean cel shading, bold clean lineart, high-contrast modern anime look",
+  watercolor:"soft watercolor shading, gentle gradients, dreamy pastel tones, painterly texture",
+  semireal:"semi-realistic anime, highly detailed rendering, mature refined proportions, cinematic soft shading",
+  retro90s:"1990s retro anime aesthetic, film grain, muted nostalgic palette, hand-painted cel look"
+};
+function artDirective(rs, key){
+  const tok=ART_STYLES[key]||"";
+  if(!tok || rs==="live") return "";
+  return `\n[그림체] 각 english_prompt에 다음 작화 톤 토큰을 반드시 포함: '${tok}'.`;
+}
+/* ----- 그림체 미리보기(레퍼런스) ----- */
+const ART_VIS={
+  webtoon:{skin:"#ffe0cf",skin2:"#f3ad8c",hair:"#3a2e3f",hair2:"#5a4a60",eye:"#7b5fd0",bg:"#fbeef0",label:"감성 웹툰풍",shade:"soft",fx:"gloss"},
+  shoujo:{skin:"#ffe6da",skin2:"#ffc2cf",hair:"#caa6e0",hair2:"#e6c9f2",eye:"#ff7fae",bg:"#fff0f6",label:"소녀만화풍",shade:"soft",fx:"sparkle"},
+  cel:{skin:"#ffd9bf",skin2:"#e89b73",hair:"#2b2b33",hair2:"#16161c",eye:"#2aa0d8",bg:"#eef3f7",label:"또렷한 셀풍",shade:"hard",fx:"none"},
+  watercolor:{skin:"#ffe4d6",skin2:"#f0bba6",hair:"#7d6b86",hair2:"#a695b0",eye:"#8aa0c8",bg:"#f3eef0",label:"수채 톤",shade:"soft",fx:"none"},
+  semireal:{skin:"#f0c9ad",skin2:"#c08760",hair:"#34281f",hair2:"#201712",eye:"#7a5230",bg:"#ece7e1",label:"세미리얼",shade:"hard",fx:"none"},
+  retro90s:{skin:"#e8c3a0",skin2:"#bd906a",hair:"#3b3550",hair2:"#2a2640",eye:"#c79f45",bg:"#e7e2d4",label:"90s 레트로",shade:"hard",fx:"grain"}
+};
+function _star(x,y,r,fill){const pts=[];for(let i=0;i<10;i++){const a=Math.PI/5*i-Math.PI/2,rr=i%2?r*0.45:r;pts.push((x+rr*Math.cos(a)).toFixed(1)+","+(y+rr*Math.sin(a)).toFixed(1));}return `<polygon points="${pts.join(" ")}" fill="${fill}"/>`;}
+function _eye(cx,cy,w,h,v,key){
+  const rx=w/2,ry=h/2,irx=rx*0.72,iry=ry*0.92;let s="";
+  s+=`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" stroke="${v.hair}" stroke-width="${key==='cel'?2.2:1.4}"/>`;
+  if(key==='cel'){
+    s+=`<ellipse cx="${cx}" cy="${cy}" rx="${irx}" ry="${iry}" fill="${v.eye}"/><circle cx="${cx}" cy="${cy}" r="${irx*0.42}" fill="#111"/><rect x="${cx-irx*0.55}" y="${cy-iry*0.6}" width="${irx*0.5}" height="${iry*0.5}" fill="#fff"/>`;
+  }else if(key==='semireal'){
+    s+=`<ellipse cx="${cx}" cy="${cy}" rx="${irx}" ry="${iry}" fill="${v.eye}"/><circle cx="${cx}" cy="${cy}" r="${irx*0.45}" fill="#160d06"/><circle cx="${cx-irx*0.3}" cy="${cy-iry*0.4}" r="${irx*0.22}" fill="#fff" opacity="0.85"/>`;
+  }else{
+    s+=`<ellipse cx="${cx}" cy="${cy}" rx="${irx}" ry="${iry}" fill="${v.eye}"/>`;
+    s+=`<ellipse cx="${cx}" cy="${cy+iry*0.25}" rx="${irx*0.85}" ry="${iry*0.6}" fill="#fff" opacity="0.16"/>`;
+    s+=`<circle cx="${cx}" cy="${cy}" r="${irx*0.4}" fill="#2a1a3a"/>`;
+    s+=`<circle cx="${cx-irx*0.35}" cy="${cy-iry*0.45}" r="${irx*0.32}" fill="#fff"/>`;
+    if(key==='shoujo') s+=`<circle cx="${cx+irx*0.32}" cy="${cy+iry*0.22}" r="${irx*0.17}" fill="#fff" opacity="0.9"/>`;
+  }
+  s+=`<path d="M${cx-rx},${cy} q${rx},${-ry*1.35} ${rx*2},0" stroke="${v.hair}" stroke-width="${key==='shoujo'?2.6:1.8}" fill="none"/>`;
+  return s;
+}
+function renderArtSample(key){
+  const v=ART_VIS[key]; if(!v) return "";
+  const W=150,H=170,sg=`sg_${key}`,hg=`hg_${key}`;
+  const big=key==='shoujo',small=key==='semireal';
+  const ew=small?15:16, eh=big?20:(small?9:14);
+  let d=`<linearGradient id="${sg}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${v.skin}"/><stop offset="1" stop-color="${v.skin2}"/></linearGradient>`+
+        `<linearGradient id="${hg}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${v.hair2}"/><stop offset="0.5" stop-color="${v.hair}"/><stop offset="1" stop-color="${v.hair2}"/></linearGradient>`;
+  if(v.fx==='grain') d+=`<pattern id="gr_${key}" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.45" fill="#000" opacity="0.06"/><circle cx="4.5" cy="4" r="0.4" fill="#000" opacity="0.05"/></pattern>`;
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${d}</defs>`;
+  s+=`<rect x="0" y="0" width="${W}" height="${H}" rx="8" fill="${v.bg}"/>`;
+  s+=`<path d="M30,170 Q30,128 75,124 Q120,128 120,170 Z" fill="${v.hair}" opacity="0.85"/>`;
+  s+=`<rect x="65" y="104" width="20" height="22" fill="url(#${sg})"/>`;
+  s+=`<ellipse cx="75" cy="62" rx="44" ry="50" fill="url(#${hg})"/>`;
+  s+=`<path d="M44,58 Q44,104 75,112 Q106,104 106,58 Q106,30 75,30 Q44,30 44,58 Z" fill="url(#${sg})"/>`;
+  if(v.shade==='hard') s+=`<path d="M75,30 Q106,30 106,58 Q106,104 75,112 Z" fill="${v.skin2}" opacity="0.3"/>`;
+  else s+=`<ellipse cx="92" cy="80" rx="20" ry="34" fill="${v.skin2}" opacity="0.18"/>`;
+  if(v.fx==='sparkle'||key==='webtoon') s+=`<ellipse cx="57" cy="84" rx="8" ry="4.5" fill="#ff8da0" opacity="0.45"/><ellipse cx="93" cy="84" rx="8" ry="4.5" fill="#ff8da0" opacity="0.45"/>`;
+  s+=`<path d="M40,58 Q42,26 75,24 Q108,26 110,58 Q96,40 80,46 Q78,30 70,44 Q58,40 52,52 Q46,50 40,58 Z" fill="url(#${hg})"/>`;
+  s+=`<path d="M52,${66-eh/2-3} q8,-4 16,0" stroke="${v.hair}" stroke-width="2" fill="none"/><path d="M82,${66-eh/2-3} q8,-4 16,0" stroke="${v.hair}" stroke-width="2" fill="none"/>`;
+  s+=_eye(60,70,ew,eh,v,key)+_eye(90,70,ew,eh,v,key);
+  s+=`<path d="M75,80 l-2,6" stroke="${v.skin2}" stroke-width="1.5" fill="none" opacity="0.6"/>`;
+  s+=`<path d="M70,94 q5,4 10,0" stroke="#b5645c" stroke-width="1.8" fill="none"/>`;
+  if(v.fx==='sparkle') s+=_star(124,38,7,"#ff9ec4")+_star(26,52,5,"#ffd0e2")+_star(118,98,4,"#ffb3d4")+_star(32,106,4,"#ffd0e2");
+  if(v.fx==='grain') s+=`<rect x="0" y="0" width="${W}" height="${H}" rx="8" fill="url(#gr_${key})"/>`;
+  s+=`</svg>`;
+  return s;
+}
+function buildArtGallery(){
+  const order=["webtoon","shoujo","cel","watercolor","semireal","retro90s"];
+  const g=$("artGallery");
+  g.innerHTML=order.map(k=>`<div class="art-sw" data-k="${k}">${renderArtSample(k)}<span>${ART_VIS[k].label}</span></div>`).join("");
+  [...g.querySelectorAll(".art-sw")].forEach(el=>el.addEventListener("click",()=>{
+    const k=el.getAttribute("data-k"); $("artStyle").value=k;
+    const p=activeProject(); p.artStyle=k; p.updatedAt=Date.now(); saveStore(); updateArtSelection();
+  }));
+}
+function updateArtSelection(){
+  const g=$("artGallery"); if(!g||!g.querySelector(".art-sw")) return;
+  const cur=$("artStyle").value;
+  [...g.querySelectorAll(".art-sw")].forEach(el=>el.classList.toggle("sel",el.getAttribute("data-k")===cur));
+  $("artTokens").textContent = ART_STYLES[cur] ? "작화 토큰: "+ART_STYLES[cur] : "‘자동’ — 영상 스타일 기본 작화로 생성";
+}
+function refsBlock(cast,setting){
+  let s="";
+  if(cast&&cast.trim()) s+=`\n[사용자 지정 등장인물 — 반드시 이 설정을 정확히 사용]\n${cast.trim()}\n`;
+  if(setting&&setting.trim()) s+=`\n[사용자 지정 배경/장소 — 반드시 이 설정을 정확히 사용]\n${setting.trim()}\n`;
+  return s;
+}
+function styleDirective(rs){
+  if(rs==="bl") return "이 작품은 [BL(남남 로맨스) 숏폼 드라마]이며 애니메이션/웹툰 작화다. 주 시청자는 BL 웹툰·애니를 즐기는 성인 여성. 모든 english_prompt는 여성 시청자가 선호하는 감각적이고 세련된 그림체로 생성되도록 작성한다. 각 english_prompt에 반드시 다음 스타일 토큰을 포함: 'Korean BL manhwa / webtoon art style, bishounen, two handsome slender adult male leads, beautiful delicate male features, soft cel-shaded anime, clean detailed linework, glossy expressive eyes, soft pastel and warm cinematic lighting, sensual romantic atmosphere, blush, intimate seductive mood, high-quality digital illustration, sparkling highlights'. 두 남자 주인공(모두 성인)의 욕망·시선 교환·육체적 긴장과 친밀함, 농염하고 관능적인 로맨틱 텐션을 강하게 표현한다. 표정·손길·밀착된 거리감으로 섹슈얼한 분위기를 살린다. [숏폼 연출] 첫 샷은 시선을 사로잡는 강한 훅, 빠른 호흡, 감정·관능 클로즈업(CU/ECU)·시선·손·리액션 샷을 적극 활용한다. photorealistic/realistic 같은 실사 표현은 쓰지 않는다.";
+  if(rs==="anime") return "이 작품은 [애니메이션]이다. 모든 english_prompt는 AI 이미지/영상 생성기에 그대로 넣었을 때 '애니메이션'으로 생성되도록 작성한다. 각 english_prompt에 반드시 애니메이션 스타일 토큰을 포함: 'anime style, 2D cel-shaded animation, hand-drawn animation, vibrant anime aesthetic, studio-quality Japanese animation, smooth animated motion'. photorealistic/live-action/realistic 같은 실사 표현은 절대 쓰지 않는다.";
+  return "이 작품은 [실사 영화]다. 모든 english_prompt는 AI 생성기에서 '실사 영상'으로 생성되도록 작성한다. 각 english_prompt에 반드시 실사 토큰을 포함: 'photorealistic, live-action, cinematic film still, shot on cinema camera (ARRI/RED), realistic lighting and textures, 35mm film, shallow depth of field'. anime/cartoon/illustration 같은 애니메이션 표현은 쓰지 않는다.";
+}
+async function renderActiveProject(){
+  const p=activeProject();
+  CURRENT={title:p.name,logline:(p.bible||"").split("\n").find(l=>l.trim())||"",bible:p.bible,scenes:p.scenes,renderStyle:p.renderStyle};
+  if(p.scenes.length) await renderBoard(CURRENT); else $("board").innerHTML="";
+}
+$("projSel").addEventListener("change",async()=>{STORE.activeId=$("projSel").value;saveStore();refreshProjectUI();await renderActiveProject();});
+$("newProjBtn").addEventListener("click",async()=>{const n=prompt("새 프로젝트 이름:","새 프로젝트");if(n===null)return;newProject((n||"").trim()||"새 프로젝트");refreshProjectUI();await renderActiveProject();});
+$("renameProjBtn").addEventListener("click",()=>{const p=activeProject();const n=prompt("프로젝트 이름 변경:",p.name);if(n===null)return;p.name=(n||"").trim()||p.name;p.updatedAt=Date.now();saveStore();refreshProjectUI();const b=$("board").querySelector(".board-head h2");if(b)b.textContent=p.name;});
+$("delProjBtn").addEventListener("click",async()=>{const p=activeProject();if(!confirm(`'${p.name}' 프로젝트를 삭제할까요? 되돌릴 수 없습니다.`))return;delete STORE.projects[p.id];STORE.activeId=Object.keys(STORE.projects)[0]||null;if(!STORE.activeId)newProject("내 첫 프로젝트");saveStore();refreshProjectUI();await renderActiveProject();});
+$("saveBibleBtn").addEventListener("click",()=>{const p=activeProject();p.bible=$("bible").value;p.updatedAt=Date.now();saveStore();refreshProjectUI();$("bibleSaved").textContent="저장됨 ✓";setTimeout(()=>$("bibleSaved").textContent="",1500);});
+$("saveRefsBtn").addEventListener("click",()=>{const p=activeProject();p.cast=$("cast").value;p.setting=$("setting").value;p.updatedAt=Date.now();saveStore();refreshProjectUI();$("refsSaved").textContent="저장됨 ✓";setTimeout(()=>$("refsSaved").textContent="",1500);});
+$("renderStyle").addEventListener("change",async()=>{const p=activeProject();p.renderStyle=$("renderStyle").value;p.updatedAt=Date.now();saveStore();await renderActiveProject();});
+$("artStyle").addEventListener("change",()=>{const p=activeProject();p.artStyle=$("artStyle").value;p.updatedAt=Date.now();saveStore();updateArtSelection();});
+$("clearScenesBtn").addEventListener("click",async()=>{const p=activeProject();if(!confirm("이 프로젝트의 콘티(씬/샷)를 모두 비울까요? 스타일 메모리는 유지됩니다."))return;p.scenes=[];p.lastSceneId=0;p.scriptSoFar="";p.updatedAt=Date.now();saveStore();refreshProjectUI();await renderActiveProject();});
+
+/* ============ PROMPTS (2-pass) ============ */
+function breakdownPrompt(segment, bible, prevSummary, startId, refs, styleDir){
+  return `너는 영화 현장의 조감독 겸 스크립트 슈퍼바이저다. 진행 중인 프로젝트에 [새 대본 조각]을 이어 붙인다.
+
+[영상 스타일] ${styleDir||""}
+
+[중요 — 연속성] 아래 [스타일 메모리]와 [이전 씬 요약]의 톤·분위기·등장인물·세계관과 반드시 일관되게 이어져야 한다. 이미 정해진 인물 설정/분위기/룩은 바꾸지 않는다.
+${refs?"[중요 — 사용자 지정] 아래 [사용자 지정 등장인물/배경]이 제공된 경우, 그 외형·성격·장소 설정을 반드시 그대로 사용하고 style_bible에도 반영한다. 대본에 이름만 나와도 이 설정과 매칭한다.\n":""}
+작업:
+1) [새 대본 조각]을 촬영용 씬으로 분해한다. 씬 = 시간/장소 연속 단위. 씬 번호(id)는 ${startId}부터 시작.
+2) 새 대본 조각을 처음부터 끝까지 빠짐없이 다룬다.
+3) 각 씬 beats에 모든 행동·사건·대사 포인트를 순서대로 나열(빠짐없이).
+4) 슬러그라인은 "INT./EXT. 장소 - 시간".
+5) "style_bible"을 갱신해 반환: 기존 내용 + 사용자 지정 설정을 유지하고 새로 등장한 인물/장소/설정만 추가. 포함 항목 — 매체(실사/애니메이션) / 작품 톤&무드 / 비주얼·조명·색감·카메라 경향(영상 프롬프트 일관성용) / 등장인물(이름+외형+성격, 한 번 정하면 고정) / 반복 배경 / 영어 프롬프트 공통 스타일 토큰(위 [영상 스타일]의 토큰을 반드시 반영). 한국어로 쓰되 영어 스타일 토큰은 영어로.
+
+순수 JSON만 출력. 코드펜스/설명 금지.
+{
+  "style_bible":"갱신된 스타일 메모리 전체 텍스트(여러 줄, 항목별로)",
+  "scenes":[
+    {"id":${startId},"slug":"INT. 카페 - 오후","synopsis":"씬 요약(한국어 1문장)","beats":["비트1","비트2","..."]}
+  ]
+}
+
+[스타일 메모리]
+${bible||"(아직 없음 — 이번에 처음 작성)"}
+${refs||""}
+[이전 씬 요약]
+${prevSummary||"(없음 — 이번이 첫 씬)"}
+
+[새 대본 조각]
+${segment}`;
+}
+function shotsPrompt(scene, density, bible, prevSummary, segment, refs, styleDir){
+  const dens = density==="detailed"
+    ? "이 씬의 모든 비트(행동·대사·반응)를 각각 별도의 샷으로 분해하라. 대화 장면은 인물별 샷/리버스 샷/투샷으로 나누고, 중요한 동작·소품은 인서트 샷을 추가하라. 실제 촬영 가능한 촘촘한 샷 리스트여야 한다."
+    : density==="light"
+    ? "이 씬의 핵심만 1~3개의 샷으로 압축하라."
+    : "이 씬을 자연스러운 편집 흐름의 샷들로 나눠라(과하지도 부족하지도 않게).";
+  return `너는 전문 스토리보드 아티스트 겸 촬영감독(DP)이다. 진행 중인 프로젝트의 [대상 씬]을 촬영용 샷 콘티로 만들어라.
+
+[영상 스타일] ${styleDir||""}
+
+[중요 — 연속성] 아래 [스타일 메모리]의 톤·인물·비주얼을 반드시 따른다. 인물 외형/성격은 메모리와 동일하게 유지. english_prompt에는 스타일 메모리의 공통 스타일 토큰(룩/조명/색감/렌즈 경향)을 포함해 이전 씬들과 영상 톤이 일치하도록 작성한다.${refs?"\n[중요 — 사용자 지정] 아래 [사용자 지정 등장인물/배경] 설정을 반드시 그대로 반영한다(외형·장소·분위기). english_prompt에도 그 외형/장소 묘사를 일관되게 넣는다.":""}
+
+${dens}
+
+각 샷에 전문 촬영 정보를 채운다. 샷넘버는 "${scene.id}A","${scene.id}B" 식.
+english_prompt: Runway/Kling/Sora 같은 AI 영상 생성기에 바로 붙여넣을 시네마틱 영어 프롬프트(피사체·동작·카메라무빙·렌즈/샷사이즈·조명·분위기·스타일). 영어로만.
+
+순수 JSON만 출력. 코드펜스/설명 금지.
+{
+  "shots":[
+    {
+      "shot_number":"${scene.id}A",
+      "shot_size":"EWS|WS|MWS|MS|MCU|CU|ECU|INSERT|OTS|POV|2-SHOT 중 하나",
+      "angle":"eye-level|low|high|dutch|overhead|worms-eye 중 하나",
+      "movement":"static|pan-left|pan-right|tilt-up|tilt-down|dolly-in|dolly-out|track-left|track-right|handheld|crane|zoom-in|zoom-out 중 하나",
+      "lens":"18mm|24mm|35mm|50mm|85mm|135mm 중 하나",
+      "composition":"구도 메모(한국어, 짧게)",
+      "action":"이 샷에서 보이는 행동(한국어)",
+      "dialogue":"이 샷의 대사(한국어). 없으면 빈 문자열",
+      "audio":"음향/음악/효과음 메모(한국어). 없으면 빈 문자열",
+      "duration_sec":3,
+      "transition":"CUT|DISSOLVE|FADE IN|FADE OUT|MATCH CUT|SMASH CUT 중 하나",
+      "setting":"배경/시간(한국어, 짧게)",
+      "props":["핵심 소품(한국어 0~3개)"],
+      "characters":[{"name":"이름","position":"left|center-left|center|center-right|right","size":"far|mid|near","pose":"standing|sitting|walking|running|arms_up|pointing|lying|crouching","facing":"left|right|front"}],
+      "english_prompt":"Cinematic English prompt."
+    }
+  ]
+}
+
+[스타일 메모리]
+${bible||"(없음)"}
+${refs||""}
+[이전 씬 요약]
+${prevSummary||"(없음)"}
+
+[대상 씬] #${scene.id} ${scene.slug}
+요약: ${scene.synopsis||""}
+비트:
+${(scene.beats||[]).map((b,i)=>`${i+1}. ${b}`).join("\n")}
+
+[현재 대본 조각]
+${segment}`;
+}
+
+/* ============ API callers ============ */
+async function callClaude(key,model,prompt){
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+    headers:{"x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","content-type":"application/json"},
+    body:JSON.stringify({model,max_tokens:8192,messages:[{role:"user",content:prompt}]})});
+  if(!r.ok) throw new Error("Claude "+r.status+": "+(await r.text()));
+  const d=await r.json(); return d.content.map(c=>c.text||"").join("");
+}
+async function callGemini(key,model,prompt){
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+  const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.6,responseMimeType:"application/json",maxOutputTokens:8192}})});
+  if(!r.ok) throw new Error("Gemini "+r.status+": "+(await r.text()));
+  const d=await r.json(); return (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("");
+}
+async function callOpenAI(key,model,prompt){
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",
+    headers:{"Authorization":"Bearer "+key,"content-type":"application/json"},
+    body:JSON.stringify({model,messages:[{role:"user",content:prompt}],response_format:{type:"json_object"},temperature:0.6})});
+  if(!r.ok) throw new Error("OpenAI "+r.status+": "+(await r.text()));
+  const d=await r.json(); return d.choices?.[0]?.message?.content||"";
+}
+function callAPI(provider,key,model,prompt){
+  if(provider==="claude") return callClaude(key,model,prompt);
+  if(provider==="gemini") return callGemini(key,model,prompt);
+  return callOpenAI(key,model,prompt);
+}
+function extractJSON(text){
+  let t=String(text).trim().replace(/^```(json)?/i,"").replace(/```$/,"").trim();
+  const s=t.indexOf("{"),e=t.lastIndexOf("}");
+  if(s>=0&&e>s) t=t.slice(s,e+1);
+  return JSON.parse(t);
+}
+
+/* ============ SVG storyboard renderer ============ */
+const POS_X={"left":0.2,"center-left":0.35,"center":0.5,"center-right":0.65,"right":0.8};
+const SIZE_MUL={"far":0.7,"mid":0.92,"near":1.18};
+// shot size -> figure scale & whether upper-body crop
+const SHOT_SCALE={EWS:0.42,WS:0.62,MWS:0.92,MS:1.5,MCU:2.1,CU:3.0,ECU:4.4,INSERT:0,POV:0,OTS:1.4,"2-SHOT":0.95};
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+function stickFigure(cx,baseY,scale,pose,facing,name,clipTop){
+  const s=scale,headR=11*s,headCY=baseY-92*s,neck=headCY+headR,hip=baseY-38*s;
+  const dir = facing==="left"?-1:(facing==="right"?1:0);
+  let p="";
+  p+=`<circle cx="${cx}" cy="${headCY}" r="${headR}" fill="none" stroke="#111" stroke-width="2"/>`;
+  // facing tick (nose)
+  if(dir!==0) p+=`<line x1="${cx+dir*headR}" y1="${headCY}" x2="${cx+dir*(headR+6*s)}" y2="${headCY}" stroke="#111" stroke-width="2"/>`;
+  if(pose==="lying"){
+    p+=`<line x1="${cx-34*s}" y1="${baseY-8*s}" x2="${cx+30*s}" y2="${baseY-8*s}" stroke="#111" stroke-width="2"/>`;
+    if(name) p+=nameTag(cx,baseY,name,clipTop);
+    return p;
+  }
+  let hipY=hip;
+  if(pose==="sitting"||pose==="crouching") hipY=baseY-50*s;
+  p+=`<line x1="${cx}" y1="${neck}" x2="${cx}" y2="${hipY}" stroke="#111" stroke-width="2"/>`;
+  const sh=neck+10*s;
+  if(pose==="arms_up"){
+    p+=`<line x1="${cx}" y1="${sh}" x2="${cx-22*s}" y2="${sh-26*s}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${sh}" x2="${cx+22*s}" y2="${sh-26*s}" stroke="#111" stroke-width="2"/>`;
+  }else if(pose==="pointing"){
+    const pd=dir||1;
+    p+=`<line x1="${cx}" y1="${sh}" x2="${cx+pd*30*s}" y2="${sh-6*s}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${sh}" x2="${cx-pd*16*s}" y2="${sh+20*s}" stroke="#111" stroke-width="2"/>`;
+  }else{
+    p+=`<line x1="${cx}" y1="${sh}" x2="${cx-18*s}" y2="${sh+24*s}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${sh}" x2="${cx+18*s}" y2="${sh+24*s}" stroke="#111" stroke-width="2"/>`;
+  }
+  if(pose==="sitting"){
+    p+=`<line x1="${cx}" y1="${hipY}" x2="${cx+24*s}" y2="${hipY}" stroke="#111" stroke-width="2"/><line x1="${cx+24*s}" y1="${hipY}" x2="${cx+24*s}" y2="${baseY}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${hipY}" x2="${cx-10*s}" y2="${baseY}" stroke="#111" stroke-width="2"/>`;
+  }else if(pose==="walking"||pose==="running"){
+    const sp=pose==="running"?26*s:16*s;
+    p+=`<line x1="${cx}" y1="${hipY}" x2="${cx-sp}" y2="${baseY}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${hipY}" x2="${cx+sp}" y2="${baseY}" stroke="#111" stroke-width="2"/>`;
+  }else if(pose==="crouching"){
+    p+=`<line x1="${cx}" y1="${hipY}" x2="${cx-14*s}" y2="${baseY}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${hipY}" x2="${cx+14*s}" y2="${baseY}" stroke="#111" stroke-width="2"/>`;
+  }else{
+    p+=`<line x1="${cx}" y1="${hipY}" x2="${cx-10*s}" y2="${baseY}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${hipY}" x2="${cx+10*s}" y2="${baseY}" stroke="#111" stroke-width="2"/>`;
+  }
+  if(name) p+=nameTag(cx,Math.min(baseY,baseY),name,clipTop,headCY);
+  return p;
+}
+function nameTag(cx,baseY,name,clipTop,headCY){
+  // place name under feet if inside frame, else above head
+  let y=baseY+18;
+  return `<text x="${cx}" y="${y}" text-anchor="middle" font-size="12" font-family="sans-serif" fill="#111">${esc(name)}</text>`;
+}
+
+function movementArrow(W,H,pad,movement){
+  const cx=W/2, cy=H/2, m=movement||"static";
+  const A="#111";
+  const arrow=(x1,y1,x2,y2)=>{
+    const ang=Math.atan2(y2-y1,x2-x1),hl=9;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${A}" stroke-width="2"/>`+
+      `<line x1="${x2}" y1="${y2}" x2="${x2-hl*Math.cos(ang-0.4)}" y2="${y2-hl*Math.sin(ang-0.4)}" stroke="${A}" stroke-width="2"/>`+
+      `<line x1="${x2}" y1="${y2}" x2="${x2-hl*Math.cos(ang+0.4)}" y2="${y2-hl*Math.sin(ang+0.4)}" stroke="${A}" stroke-width="2"/>`;
+  };
+  if(m==="pan-left"||m==="track-left") return arrow(cx+45,H-pad-26,cx-45,H-pad-26);
+  if(m==="pan-right"||m==="track-right") return arrow(cx-45,H-pad-26,cx+45,H-pad-26);
+  if(m==="tilt-up"||m==="crane") return arrow(pad+30,cy+40,pad+30,cy-40);
+  if(m==="tilt-down") return arrow(pad+30,cy-40,pad+30,cy+40);
+  if(m==="dolly-in"||m==="zoom-in"){ // converging corners
+    return arrow(pad+40,pad+40,cx-30,cy-20)+arrow(W-pad-40,H-pad-40,cx+30,cy+20);
+  }
+  if(m==="dolly-out"||m==="zoom-out"){
+    return arrow(cx-30,cy-20,pad+40,pad+40)+arrow(cx+30,cy+20,W-pad-40,H-pad-40);
+  }
+  if(m==="handheld") return `<text x="${cx}" y="${H-pad-22}" text-anchor="middle" font-size="11" font-family="sans-serif" fill="#888">~ handheld ~</text>`;
+  return "";
+}
+
+function shotSVG(sh, aspect){
+  let W=640,H=360;
+  if(aspect==="9:16"){ W=405; H=720; }
+  else if(aspect==="1:1"){ W=520; H=520; }
+  const pad=16;
+  const frameScale=Math.max(1, H/360);
+  const inX=pad,inY=pad,inW=W-2*pad,inH=H-2*pad,inBottom=H-pad;
+  const groundY=H-66;
+  const size=(sh.shot_size||"MWS").toUpperCase();
+  let b="";
+  b+=`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`;
+  // clip to inner frame
+  b+=`<defs><clipPath id="fr"><rect x="${inX}" y="${inY}" width="${inW}" height="${inH}"/></clipPath></defs>`;
+  b+=`<g clip-path="url(#fr)">`;
+  // rule-of-thirds (faint)
+  const v1=inX+inW/3,v2=inX+2*inW/3,h1=inY+inH/3,h2=inY+2*inH/3;
+  b+=`<g stroke="#e3e3e0" stroke-width="1">`+
+     `<line x1="${v1}" y1="${inY}" x2="${v1}" y2="${inBottom}"/><line x1="${v2}" y1="${inY}" x2="${v2}" y2="${inBottom}"/>`+
+     `<line x1="${inX}" y1="${h1}" x2="${W-pad}" y2="${h1}"/><line x1="${inX}" y1="${h2}" x2="${W-pad}" y2="${h2}"/></g>`;
+  // ground
+  b+=`<line x1="${inX}" y1="${groundY+18}" x2="${W-pad}" y2="${groundY+18}" stroke="#cfcfca" stroke-width="1.5"/>`;
+  const chars=sh.characters||[];
+  if(size==="INSERT"){
+    // draw a simple object box center with prop label
+    const lbl=(sh.props&&sh.props[0])||"INSERT";
+    b+=`<rect x="${W/2-70}" y="${H/2-46}" width="140" height="92" fill="none" stroke="#111" stroke-width="2"/>`;
+    b+=`<line x1="${W/2-70}" y1="${H/2-46}" x2="${W/2+70}" y2="${H/2+46}" stroke="#ddd" stroke-width="1"/>`;
+    b+=`<text x="${W/2}" y="${H/2+72}" text-anchor="middle" font-size="13" font-family="sans-serif" fill="#111">🔍 ${esc(lbl)}</text>`;
+  }else if(size==="POV"){
+    b+=`<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="14" font-family="sans-serif" fill="#999">POV — ${esc((chars[0]&&chars[0].name)||"인물")}의 시점</text>`;
+    // crosshair-ish framing
+    b+=`<rect x="${W/2-90}" y="${H/2-60}" width="180" height="120" fill="none" stroke="#ddd" stroke-width="1" stroke-dasharray="4 4"/>`;
+  }else{
+    let baseScale=SHOT_SCALE[size]!=null?SHOT_SCALE[size]:0.92;
+    if(size==="OTS"){
+      // foreground back figure on right, subject facing camera on left
+      b+=stickFigure(W-110, inBottom+120*frameScale, 2.6*frameScale, "standing","left","",inY); // big foreground (cropped)
+    }
+    const closeup=["MCU","CU","ECU"].includes(size);
+    chars.forEach((c,i)=>{
+      const fx=(POS_X[c.position]!=null?POS_X[c.position]:0.5)*W;
+      const s=baseScale*(SIZE_MUL[c.size]!=null?SIZE_MUL[c.size]:0.92)*frameScale;
+      let baseY;
+      if(!closeup){ baseY=groundY; }            // full/medium-wide: feet on ground
+      else { baseY=inY+inH*0.30+92*s; }         // close-ups: head near upper third, legs crop out
+      b+=stickFigure(fx,baseY,s,c.pose||"standing",c.facing||"front",c.name||"",inY);
+    });
+    if(chars.length===0) b+=`<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="14" font-family="sans-serif" fill="#999">(풍경 / 빈 샷)</text>`;
+  }
+  // camera movement arrow
+  b+=movementArrow(W,H,pad,sh.movement);
+  b+=`</g>`; // end clip
+  // frame border (on top)
+  b+=`<rect x="${inX}" y="${inY}" width="${inW}" height="${inH}" fill="none" stroke="#111" stroke-width="2.5"/>`;
+  // top-left setting
+  if(sh.setting) b+=`<text x="${inX+10}" y="${inY+20}" font-size="12" font-family="sans-serif" fill="#444">📍 ${esc(sh.setting)}</text>`;
+  // top-right camera move + lens
+  const camTxt=[sh.movement&&sh.movement!=="static"?sh.movement:"",sh.lens?sh.lens:""].filter(Boolean).join(" · ");
+  if(camTxt) b+=`<text x="${W-pad-10}" y="${inY+20}" text-anchor="end" font-size="12" font-family="sans-serif" fill="#444">🎥 ${esc(camTxt)}</text>`;
+  // bottom-right shot size + angle
+  b+=`<text x="${W-pad-10}" y="${inBottom-12}" text-anchor="end" font-size="13" font-family="sans-serif" font-weight="bold" fill="#111">${esc(size)}${sh.angle?" / "+esc(sh.angle):""}</text>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${b}</svg>`;
+}
+
+function svgToPng(svgStr,scale,W,H){
+  scale=scale||2; W=W||640; H=H||360;
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(new Blob([svgStr],{type:"image/svg+xml;charset=utf-8"}));
+    const img=new Image();
+    img.onload=()=>{const cv=document.createElement("canvas");cv.width=W*scale;cv.height=H*scale;
+      const ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,cv.width,cv.height);ctx.drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(url);res(cv.toDataURL("image/png"));};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("SVG 렌더 실패"));};
+    img.src=url;
+  });
+}
+
+/* ============ render board ============ */
+let CURRENT=null;
+function fld(lbl,val){return val?`<div class="field"><span class="lbl">${lbl}</span>${esc(val)}</div>`:"";}
+const STYLE_LABEL={live:"🎬 실사",anime:"🎨 애니메이션",bl:"💕 BL 숏폼"};
+async function renderBoard(data){
+  CURRENT=data;
+  const aspect=data.renderStyle==="bl"?"9:16":"16:9";   // BL → 세로 프레임
+  let SW=640,SH=360; if(aspect==="9:16"){SW=405;SH=720;}
+  const board=$("board"); board.innerHTML="";
+  const totalShots=data.scenes.reduce((a,s)=>a+(s.shots?s.shots.length:0),0);
+  const styleBadge=`${STYLE_LABEL[data.renderStyle]||""}${aspect==="9:16"?" · 세로":""}`;
+  const head=document.createElement("div"); head.className="board-head";
+  head.innerHTML=`<div><h2>${esc(data.title||"스토리보드")}</h2>${data.logline?`<div class="logline">${esc(data.logline)}</div>`:""}<div class="stat">씬 ${data.scenes.length} · 샷 ${totalShots} · ${esc(styleBadge)}</div></div>`;
+  const pdfBtn=document.createElement("button"); pdfBtn.className="btn-primary"; pdfBtn.textContent="📄 PDF로 저장"; pdfBtn.onclick=exportPDF;
+  head.appendChild(pdfBtn); board.appendChild(head);
+
+  for(const sc of data.scenes){
+    const sep=document.createElement("div"); sep.className="scene-sep";
+    sep.innerHTML=`<span>SCENE ${esc(String(sc.id))} — ${esc(sc.slug||"")}</span><span class="syn">${esc(sc.synopsis||"")}</span>`;
+    board.appendChild(sep);
+    for(const sh of (sc.shots||[])){
+      const png=await svgToPng(shotSVG(sh,aspect),2,SW,SH);
+      const card=document.createElement("div"); card.className="shot-card"+(aspect==="9:16"?" vert":(aspect==="1:1"?" sq":""));
+      const props=(sh.props&&sh.props.length)?`<span class="tag">소품 ${sh.props.map(esc).join(", ")}</span>`:"";
+      card.innerHTML=`
+        <div class="shot-frame"><img src="${png}" alt="${esc(sh.shot_number||"")}"></div>
+        <div class="shot-body">
+          <div class="shot-top">
+            <span class="shot-no">${esc(sh.shot_number||"")}</span>
+            <span class="tag size">${esc((sh.shot_size||"").toUpperCase())}</span>
+            ${sh.angle?`<span class="tag">${esc(sh.angle)}</span>`:""}
+            ${sh.movement?`<span class="tag">🎥 ${esc(sh.movement)}</span>`:""}
+            ${sh.lens?`<span class="tag">${esc(sh.lens)}</span>`:""}
+            ${sh.duration_sec?`<span class="tag">⏱ ${esc(String(sh.duration_sec))}s</span>`:""}
+            ${sh.transition?`<span class="tag">${esc(sh.transition)}</span>`:""}
+            ${props}
+          </div>
+          ${fld("구도",sh.composition)}
+          ${fld("액션",sh.action)}
+          ${sh.dialogue?`<div class="field dlg"><span class="lbl">대사</span>“${esc(sh.dialogue)}”</div>`:""}
+          ${fld("음향",sh.audio)}
+          <div class="prompt-box">
+            <div class="plabel"><span>영상 생성용 영어 프롬프트</span><button class="copy-btn">복사</button></div>
+            <code>${esc(sh.english_prompt||"")}</code>
+          </div>
+        </div>`;
+      const cb=card.querySelector(".copy-btn");
+      cb.onclick=()=>{navigator.clipboard.writeText(sh.english_prompt||"");cb.textContent="복사됨!";setTimeout(()=>cb.textContent="복사",1200);};
+      board.appendChild(card);
+    }
+  }
+  board.scrollIntoView({behavior:"smooth"});
+}
+
+/* ============ PDF (cover + packed pages) ============ */
+async function exportPDF(){
+  if(!CURRENT) return;
+  $("status").textContent="PDF 생성 중...";
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:"pt",format:"a4",orientation:"portrait"});
+  const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+  const margin=30, contentW=pw-margin*2;
+  const totalShots=CURRENT.scenes.reduce((a,s)=>a+(s.shots?s.shots.length:0),0);
+
+  // cover (rendered DOM -> image to keep Korean)
+  const cover=document.createElement("div");
+  cover.style.cssText="width:760px;padding:60px 50px;font-family:sans-serif;background:#fff;color:#111;position:fixed;left:-9999px;top:0;";
+  cover.innerHTML=`<div style="border:3px solid #111;padding:48px 40px;">
+    <div style="font-size:13px;letter-spacing:3px;color:#888;">STORYBOARD · 촬영 콘티</div>
+    <div style="font-size:40px;font-weight:800;margin:18px 0 10px;line-height:1.2;">${esc(CURRENT.title||"스토리보드")}</div>
+    <div style="font-size:15px;color:#444;max-width:560px;">${esc(CURRENT.logline||"")}</div>
+    <hr style="border:none;border-top:1px solid #ddd;margin:28px 0;">
+    <div style="font-size:14px;color:#333;">씬 ${CURRENT.scenes.length} · 샷 ${totalShots}</div>
+    ${CURRENT.bible?`<div style="font-size:12px;color:#555;margin-top:16px;white-space:pre-wrap;max-width:580px;line-height:1.55;"><b>스타일 메모리</b><br>${esc(CURRENT.bible).slice(0,700)}</div>`:""}
+    <div style="font-size:12px;color:#999;margin-top:30px;">${new Date().toLocaleDateString("ko-KR")}</div>
+  </div>`;
+  document.body.appendChild(cover);
+  const coverCv=await html2canvas(cover,{scale:2,backgroundColor:"#fff",logging:false});
+  document.body.removeChild(cover);
+  pdf.addImage(coverCv.toDataURL("image/png"),"PNG",margin,margin,contentW,coverCv.height*(contentW/coverCv.width),undefined,"FAST");
+
+  // shot cards packed onto pages, scene separators included
+  const board=$("board");
+  const nodes=[...board.querySelectorAll(".scene-sep,.shot-card")];
+  pdf.addPage(); let y=margin;
+  for(const node of nodes){
+    const cv=await html2canvas(node,{scale:2,backgroundColor:"#fff",logging:false});
+    const h=cv.height*(contentW/cv.width);
+    if(y+h>ph-margin && y>margin){ pdf.addPage(); y=margin; }
+    pdf.addImage(cv.toDataURL("image/png"),"PNG",margin,y,contentW,h,undefined,"FAST");
+    y+=h+8;
+  }
+  pdf.save((CURRENT.title||"storyboard").replace(/[\\/:*?"<>|]/g,"_")+"_콘티.pdf");
+  $("status").textContent="PDF 저장 완료 ✓";
+}
+
+/* ============ generate flow (2-pass) ============ */
+function setProg(pct,txt){$("prog").style.display="block";$("pfill").style.width=pct+"%";$("ptxt").textContent=txt;}
+$("genBtn").addEventListener("click",async()=>{
+  const provider=$("provider").value, key=$("apikey").value.trim(), segment=$("script").value.trim();
+  const model=currentModel();
+  const density=$("density").value;
+  $("err").textContent="";
+  if(!key){$("err").textContent="API 키를 입력하세요.";return;}
+  if(!segment){$("err").textContent="추가할 대본을 입력하세요.";return;}
+  const k=loadKeys();k[provider]=key;saveKeys(k);
+  const proj=activeProject();
+  proj.bible=$("bible").value;            // 사용자가 수동 수정한 메모리 반영
+  proj.cast=$("cast").value;              // 사용자 지정 등장인물
+  proj.setting=$("setting").value;        // 사용자 지정 배경
+  proj.renderStyle=$("renderStyle").value;// 실사/애니/ BL
+  proj.artStyle=$("artStyle").value;      // 그림체
+  const refs=refsBlock(proj.cast,proj.setting);
+  const styleDir=styleDirective(proj.renderStyle)+artDirective(proj.renderStyle,proj.artStyle);
+  $("genBtn").disabled=true;
+  try{
+    const startId=(proj.lastSceneId||0)+1;
+    const prevSummary=proj.scenes.map(s=>`#${s.id} ${s.slug}: ${s.synopsis}`).join("\n");
+    // PASS 1: breakdown (연속성 반영)
+    setProg(8,`${PROVIDERS[provider].label} (${model}) — 새 대본을 씬으로 분해 중...`);
+    const bd=extractJSON(await callAPI(provider,key,model,breakdownPrompt(segment,proj.bible,prevSummary,startId,refs,styleDir)));
+    if(!bd.scenes||!Array.isArray(bd.scenes)||!bd.scenes.length) throw new Error("씬 분해 실패: scenes 없음");
+    if(bd.style_bible) proj.bible=String(bd.style_bible);   // 메모리 자동 갱신
+    bd.scenes.forEach((sc,i)=>{ sc.id=startId+i; });          // 번호 연속 보장
+    // PASS 2: shots per new scene (메모리 + 이전 씬 컨텍스트 전달)
+    const newScenes=[];
+    for(let i=0;i<bd.scenes.length;i++){
+      const sc=bd.scenes[i];
+      setProg(10+Math.round(85*(i/bd.scenes.length)),`샷 콘티 생성 중 (${i+1}/${bd.scenes.length}): ${sc.slug||("씬 "+sc.id)}`);
+      const ctxPrev=[prevSummary, newScenes.map(s=>`#${s.id} ${s.slug}: ${s.synopsis}`).join("\n")].filter(Boolean).join("\n");
+      let shots=[];
+      try{
+        const sr=extractJSON(await callAPI(provider,key,model,shotsPrompt(sc,density,proj.bible,ctxPrev,segment,refs,styleDir)));
+        shots=Array.isArray(sr.shots)?sr.shots:[];
+      }catch(e){ shots=[{shot_number:sc.id+"A",shot_size:"MWS",action:(sc.synopsis||""),composition:"자동 분해 실패 — 씬 요약 기반",english_prompt:"",characters:[]}]; }
+      newScenes.push({id:sc.id,slug:sc.slug,synopsis:sc.synopsis,shots});
+    }
+    // 프로젝트에 누적 저장
+    proj.scenes=proj.scenes.concat(newScenes);
+    proj.lastSceneId=proj.scenes.reduce((m,s)=>Math.max(m,parseInt(s.id)||0),0);
+    proj.scriptSoFar=(proj.scriptSoFar?proj.scriptSoFar+"\n\n":"")+segment;
+    proj.updatedAt=Date.now();
+    saveStore();
+    refreshProjectUI();
+    setProg(98,"콘티 그리는 중...");
+    await renderActiveProject();
+    setProg(100,`완료 ✓ 이번에 ${newScenes.length}씬 추가 · 누적 ${proj.scenes.length}씬`);
+    setTimeout(()=>{$("prog").style.display="none";},2500);
+    $("status").textContent="완료 ✓ 추가됨";
+    $("script").value="";   // 다음 조각 입력을 위해 비움
+  }catch(e){
+    console.error(e); $("err").textContent="오류: "+e.message; $("prog").style.display="none"; $("status").textContent="";
+  }finally{ $("genBtn").disabled=false; }
+});
+
+$("sampleBtn").addEventListener("click",()=>{
+  $("script").value=
+`제목: 우산
+
+INT. 동네 카페 - 비 오는 오후
+민수(20대 후반, 지친 표정)는 창가 자리에 앉아 식어버린 커피를 앞에 두고 노트북 화면을 멍하니 본다. 빗방울이 유리창을 타고 흐른다.
+문에 달린 종이 딸랑 울린다. 지영(20대 중반)이 우산을 접으며 들어온다. 어깨가 비에 젖어 있다.
+지영은 카운터로 향하다가 창가의 민수를 발견하고 멈춘다.
+두 사람의 눈이 마주친다. 정적.
+민수: (어색하게 손을 들며) ...오랜만이야.
+지영은 잠시 망설이다 미소 지으며 다가온다.
+
+EXT. 카페 앞 거리 - 잠시 후
+비가 그쳤다. 두 사람이 하나의 우산을 같이 쓰고 천천히 걷는다.
+젖은 아스팔트에 가로등 빛이 번진다.
+지영: 우산, 아직도 안 버렸네.
+민수가 옅게 웃는다.`;
+});
+
+/* ============ bootstrap (마지막에 실행) ============ */
+buildArtGallery();
+refreshProjectUI();
+renderActiveProject();
+</script>
+</body>
+</html>
