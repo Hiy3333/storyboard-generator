@@ -654,6 +654,25 @@ function svgToPng(svgStr,scale,W,H){
 /* ============ render board ============ */
 let CURRENT=null;
 function fld(lbl,val){return val?`<div class="field"><span class="lbl">${lbl}</span>${esc(val)}</div>`:"";}
+// 스토리보드의 모든 항목(구도·카메라·음향·대사)을 영어 프롬프트에 빠짐없이 합친다
+function enrichPrompt(sh){
+  let p=(sh.english_prompt||"").trim();
+  const lp=p.toLowerCase();
+  const add=[];
+  const cam=[];
+  if(sh.shot_size && !lp.includes(String(sh.shot_size).toLowerCase())) cam.push(sh.shot_size+" shot");
+  if(sh.angle && !lp.includes(String(sh.angle).toLowerCase())) cam.push(sh.angle+" angle");
+  if(sh.movement && sh.movement!=="static" && !lp.includes(String(sh.movement).toLowerCase())) cam.push(sh.movement+" camera movement");
+  if(sh.lens && !lp.includes(String(sh.lens).toLowerCase())) cam.push(sh.lens+" lens");
+  const trim=s=>String(s).replace(/[.\s]+$/,"");
+  if(cam.length) add.push("Camera: "+cam.join(", "));
+  if(sh.composition && !p.includes(sh.composition)) add.push("Composition: "+trim(sh.composition));
+  if(sh.action && !p.includes(sh.action)) add.push("Action: "+trim(sh.action));
+  if(sh.audio && !p.includes(sh.audio)) add.push("Sound design: "+trim(sh.audio));
+  if(sh.dialogue && !p.includes(sh.dialogue)) add.push('Spoken dialogue — '+trim(sh.dialogue));
+  if(add.length) p=p.replace(/[.\s]*$/,"")+". "+add.join(". ")+".";
+  return p;
+}
 const STYLE_LABEL={live:"🎬 실사",anime:"🎨 애니메이션",bl:"💕 BL 숏폼"};
 async function renderBoard(data){
   CURRENT=data;
@@ -673,6 +692,7 @@ async function renderBoard(data){
     board.appendChild(sep);
     for(const sh of (sc.shots||[])){
       const png=await svgToPng(shotSVG(sh,aspect),2,SW,SH);
+      const fullPrompt=enrichPrompt(sh);
       const card=document.createElement("div"); card.className="shot-card"+(aspect==="9:16"?" vert":(aspect==="1:1"?" sq":""));
       const props=(sh.props&&sh.props.length)?`<span class="tag">소품 ${sh.props.map(esc).join(", ")}</span>`:"";
       card.innerHTML=`
@@ -694,11 +714,11 @@ async function renderBoard(data){
           ${fld("음향",sh.audio)}
           <div class="prompt-box">
             <div class="plabel"><span>영상 생성용 영어 프롬프트</span><button class="copy-btn">복사</button></div>
-            <code>${esc(sh.english_prompt||"")}</code>
+            <code>${esc(fullPrompt)}</code>
           </div>
         </div>`;
       const cb=card.querySelector(".copy-btn");
-      cb.onclick=()=>{navigator.clipboard.writeText(sh.english_prompt||"");cb.textContent="복사됨!";setTimeout(()=>cb.textContent="복사",1200);};
+      cb.onclick=()=>{navigator.clipboard.writeText(fullPrompt);cb.textContent="복사됨!";setTimeout(()=>cb.textContent="복사",1200);};
       board.appendChild(card);
     }
   }
