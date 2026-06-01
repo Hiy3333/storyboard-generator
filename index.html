@@ -443,6 +443,7 @@ function shotsPrompt(scene, density, bible, prevSummary, segment, refs, styleDir
 ${dens}
 
 각 샷에 전문 촬영 정보를 채운다. 샷넘버는 "${scene.id}A","${scene.id}B" 식.
+[대사 분리 규칙 — 매우 중요] 한 샷에는 한 명의 대사만 담는다. 두 명 이상이 말하는 장면은 화자별로 샷을 나눠라(샷 → 리버스 샷). 각 샷의 dialogue 필드에는 그 샷에서 말하는 한 사람의 대사만 넣고, english_prompt에는 그 한 명이 화면에서 말하는 모습으로 묘사한다(영상 AI가 한 명이 여러 대사를 다 말하는 오류 방지).
 english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙여넣을 최고 품질의 시네마틱 영어 프롬프트. 자연스러운 영어 한 문단(태그 나열 금지)으로 쓰되 다음을 반드시 모두 녹여라:
   (1) 피사체와 외형 — 스타일 메모리/등장인물 설정과 정확히 일치하는 구체적 묘사,
   (2) 클립 동안의 동작·연기 변화 — 정지가 아닌 수 초짜리 움직임을 동사로(예: "as the camera slowly pushes in, his grip tightens and her expression cracks"),
@@ -765,6 +766,12 @@ function computeDuration(sh){
   if(sz==="EWS"||sz==="WS") d += 0.8; if(sz==="INSERT") d -= 0.5;
   return Math.max(1.5, Math.min(12, Math.round(d*2)/2));
 }
+// 대사를 화자별로 분해 ([{name,line}])
+function parseDialogue(raw){
+  const turns=[]; const re=/([0-9A-Za-z가-힣]{1,16})\s*[:：]\s*["“”'']([\s\S]*?)["“”'']/g; let m;
+  while((m=re.exec(String(raw||"")))) turns.push({name:m[1].trim(), line:m[2].trim()});
+  return turns;
+}
 // 모든 항목(구도·카메라·음향·대사) + 부스터를 영어 영상 프롬프트로 합친다
 function enrichPrompt(sh, rs){
   const p=sanitizeSafe(stripCJK((sh.english_prompt||"").trim()));
@@ -782,8 +789,18 @@ function enrichPrompt(sh, rs){
   // 구도·액션은 위 영어 묘사(english_prompt)에 이미 영어로 포함되므로 한국어 중복을 넣지 않는다(영상툴 품질 저하 방지).
   // 대사·음향만 음성/자막 지원 툴용으로 영어 라벨과 함께 맨 뒤에 둔다.
   // 음향(SFX)은 모델이 english_prompt 안에 영어로 녹이므로 여기서 한국어로 덧붙이지 않는다.
-  // 대사만은 캐릭터가 실제로 말하는 한국어이므로 그대로 유지한다.
-  if(sh.dialogue && !p.includes(sh.dialogue)) parts.push('The characters speak these exact lines ALOUD in KOREAN (Korean-language spoken dialogue with natural lip-sync, audio in Korean): '+trim(sh.dialogue));
+  // 대사는 한국어로 발화. 화자가 둘 이상이면 '서로 다른 인물'임을 명시해 한 명이 다 말하지 않게 한다.
+  if(sh.dialogue && !p.includes(sh.dialogue)){
+    const turns=parseDialogue(sh.dialogue);
+    if(turns.length>=2){
+      const lines=turns.map((t,i)=>`Speaker ${String.fromCharCode(65+i)} = ${t.name} (a distinct individual, different face/voice) says aloud in Korean: "${t.line}"`).join("; then ");
+      parts.push(`This shot has ${turns.length} DIFFERENT characters speaking in turn — they are separate people, NOT one person; each is lip-synced in Korean. ${lines}. Do not let a single character speak all the lines`);
+    } else if(turns.length===1){
+      parts.push(`Only ${turns[0].name} speaks in this shot, aloud in Korean with natural lip-sync: "${turns[0].line}". No other character speaks here`);
+    } else {
+      parts.push('The on-screen character speaks this line aloud in KOREAN (natural lip-sync): '+trim(sh.dialogue));
+    }
+  }
   return parts.map(x=>trim(x)).filter(Boolean).join(". ")+".";
 }
 const STYLE_LABEL={live:"🎬 실사",anime:"🎨 애니메이션"};
