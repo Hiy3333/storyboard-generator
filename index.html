@@ -709,7 +709,7 @@ function enrichPrompt(sh, rs){
   parts.push(qualityBoost(rs));                                   // 부스터
   // 구도·액션은 위 영어 묘사(english_prompt)에 이미 영어로 포함되므로 한국어 중복을 넣지 않는다(영상툴 품질 저하 방지).
   // 대사·음향만 음성/자막 지원 툴용으로 영어 라벨과 함께 맨 뒤에 둔다.
-  if(sh.dialogue && !p.includes(sh.dialogue)) parts.push('Spoken dialogue (for audio/subtitle): '+trim(sh.dialogue));
+  if(sh.dialogue && !p.includes(sh.dialogue)) parts.push('The characters speak these exact lines ALOUD in KOREAN (Korean-language spoken dialogue with natural lip-sync, audio in Korean): '+trim(sh.dialogue));
   if(sh.audio && !p.includes(sh.audio)) parts.push("Sound/SFX: "+trim(sh.audio));
   return parts.map(x=>trim(x)).filter(Boolean).join(". ")+".";
 }
