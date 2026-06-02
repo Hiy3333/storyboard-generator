@@ -870,15 +870,29 @@ function composeVideoPrompt(visual, rs, dlgLabel, camSh){
   if(dlgLabel && !p.includes(dlgLabel)) parts.push(dlgLabel);
   return parts.map(x=>trim(x)).filter(Boolean).join(". ")+".";
 }
-// 샷 하나에서 '영상 생성용 프롬프트 목록'을 만든다.
-// 2명 이상 발화(clips 존재) → 화자별 샷/리버스 클립으로 분리. 그 외 → 단일 프롬프트 1개.
-function enrichPrompts(sh, rs){
+// 샷을 '컷 단위'로 나눈다(단일 진실원). 우선순위:
+// 1) clips(모델이 만든 샷/리버스) → 화자별 컷
+// 2) clips가 없어도 dialogue에 2명 이상 발화 → 화자별로 자동 분리(안전망: 한 클립=한 명 보장)
+// 3) 0~1명 발화 → 단일 컷
+function shotUnits(sh){
   const clips=Array.isArray(sh.clips)?sh.clips.filter(c=>c&&(c.english_prompt||c.line)):[];
   if(clips.length>=2){
-    return clips.map((c,i)=>{
-      const line=String(c.line||"").replace(/^["“”'']+|["“”'']+$/g,"").trim();
-      const dlg=line?`Spoken Korean dialogue, natural lip-sync — ${c.speaker||("화자"+(i+1))}: "${line}"`:"";
-      return {label:`Clip ${i+1} · ${c.speaker||("화자"+(i+1))} 발화`, text:composeVideoPrompt(c.english_prompt||sh.english_prompt, rs, dlg, null)};
+    return clips.map(c=>({beat:c.english_prompt||sh.english_prompt, speaker:c.speaker||"", line:String(c.line||"").replace(/^["“”'']+|["“”'']+$/g,"").trim(), split:true}));
+  }
+  const turns=parseDialogue(sh.dialogue);
+  if(turns.length>=2){
+    return turns.map(t=>({beat:sh.english_prompt, speaker:t.name, line:t.line, split:true}));
+  }
+  return [{beat:sh.english_prompt, speaker:turns[0]?turns[0].name:"", line:turns[0]?turns[0].line:"", split:false}];
+}
+// 샷 하나에서 '영상 생성용 프롬프트 목록'을 만든다.
+// 2명 이상 발화 → 화자별 샷/리버스 클립으로 분리. 그 외 → 단일 프롬프트 1개.
+function enrichPrompts(sh, rs){
+  const units=shotUnits(sh);
+  if(units.length>1){
+    return units.map((u,i)=>{
+      const dlg=u.line?`Spoken Korean dialogue, natural lip-sync — ${u.speaker||("화자"+(i+1))}: "${u.line}"`:"";
+      return {label:`Clip ${i+1} · ${u.speaker||("화자"+(i+1))} 발화`, text:composeVideoPrompt(u.beat, rs, dlg, sh)};
     });
   }
   return [{label:"", text:composeVideoPrompt(sh.english_prompt, rs, dialogueLabel(parseDialogue(sh.dialogue), sh.dialogue), sh)}];
@@ -894,16 +908,15 @@ function camLine(sh){
   if(sh.shot_size) c.push(String(sh.shot_size).toUpperCase());
   return c.length?c.join(", "):"static";
 }
-// 씬을 '컷 단위'로 펼친다 — 2인 대사 샷은 clips(샷/리버스)로 분리해 각각 한 컷
+// 씬을 '컷 단위'로 펼친다 — shotUnits로 2인 대사 샷을 화자별(샷/리버스)로 분리
 function sceneUnits(scene){
   const units=[];
   (scene.shots||[]).forEach(sh=>{
-    const clips=Array.isArray(sh.clips)?sh.clips.filter(c=>c&&(c.english_prompt||c.line)):[];
-    if(clips.length>=2){
-      clips.forEach((c,i)=>{
-        const line=String(c.line||"").replace(/^["“”'']+|["“”'']+$/g,"").trim();
-        const dlg=line?`${c.speaker?c.speaker+": ":""}"${line}"`:"";
-        units.push({sh, num:(sh.shot_number||"")+"-"+(i+1), beat:c.english_prompt||sh.english_prompt, dlg,
+    const us=shotUnits(sh);
+    if(us.length>1){
+      us.forEach((u,i)=>{
+        const dlg=u.line?`${u.speaker?u.speaker+": ":""}"${u.line}"`:"";
+        units.push({sh, num:(sh.shot_number||"")+"-"+(i+1), beat:u.beat, dlg,
           dur:computeDuration({dialogue:dlg, action:sh.action, movement:sh.movement, shot_size:sh.shot_size})});
       });
     } else {
