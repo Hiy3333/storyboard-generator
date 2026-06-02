@@ -71,6 +71,7 @@
   .regen-btn:disabled{opacity:.6;cursor:wait;}
   details.adv summary{cursor:pointer;font-size:13px;color:var(--muted);}
   .art-gallery{display:flex;gap:8px;flex-wrap:wrap;}
+  .art-gallery.disabled{opacity:.4;pointer-events:none;}
   .art-sw{cursor:pointer;border:2px solid transparent;border-radius:9px;padding:4px;text-align:center;background:#fff;width:94px;transition:border-color .15s;}
   .art-sw:hover{border-color:#bbb;}
   .art-sw.sel{border-color:#161616;}
@@ -106,7 +107,7 @@
           <option value="live">🎬 실사 (라이브액션)</option>
           <option value="anime">🎨 애니메이션</option>
         </select>
-        <div class="hint">생성되는 영어 프롬프트가 이 스타일로 나옵니다. 이미지/영상 생성 AI에 그대로 사용. (BL 선택 시 콘티 프레임은 세로로 그려집니다)</div>
+        <div class="hint">생성되는 영어 프롬프트가 이 스타일로 나옵니다. 이미지/영상 생성 AI에 그대로 사용.</div>
       </div>
       <div>
         <label>그림체 (작화 톤)</label>
@@ -119,7 +120,7 @@
           <option value="semireal">세미리얼 극화풍</option>
           <option value="retro90s">빈티지 90s 애니</option>
         </select>
-        <div class="hint">애니/BL 선택 시 적용. 영어 프롬프트에 작화 토큰이 들어갑니다. 아래 미리보기를 클릭해도 선택됩니다.</div>
+        <div class="hint">애니메이션 스타일에서만 적용됩니다(실사 모드에서는 무시). 영어 프롬프트에 작화 토큰이 들어갑니다. 아래 미리보기를 클릭해도 선택됩니다.</div>
       </div>
     </div>
     <div id="artGallery" class="art-gallery" style="margin-top:10px;"></div>
@@ -281,7 +282,7 @@ function refreshProjectUI(){
   $("bible").value=p.bible||"";
   $("cast").value=p.cast||"";
   $("setting").value=p.setting||"";
-  if(p.renderStyle!=="live"&&p.renderStyle!=="anime"){ p.renderStyle="anime"; }  // legacy 'bl' → anime
+  if(p.renderStyle!=="live"&&p.renderStyle!=="anime"){ p.renderStyle="anime"; saveStore(); }  // legacy 'bl' → anime
   $("renderStyle").value=p.renderStyle;
   $("artStyle").value=p.artStyle||"auto";
   updateArtSelection();
@@ -367,7 +368,12 @@ function updateArtSelection(){
   const g=$("artGallery"); if(!g||!g.querySelector(".art-sw")) return;
   const cur=$("artStyle").value;
   [...g.querySelectorAll(".art-sw")].forEach(el=>el.classList.toggle("sel",el.getAttribute("data-k")===cur));
-  $("artTokens").textContent = ART_STYLES[cur] ? "작화 토큰: "+ART_STYLES[cur] : "‘자동’ — 영상 스타일 기본 작화로 생성";
+  // 실사 모드에서는 그림체가 프롬프트에 반영되지 않으므로 갤러리/선택을 비활성화
+  const live=$("renderStyle").value==="live";
+  g.classList.toggle("disabled",live);
+  $("artStyle").disabled=live;
+  $("artTokens").textContent = live ? "실사 모드에서는 그림체(작화 톤)가 적용되지 않습니다."
+    : (ART_STYLES[cur] ? "작화 토큰: "+ART_STYLES[cur] : "‘자동’ — 영상 스타일 기본 작화로 생성");
 }
 function refsBlock(cast,setting){
   let s="";
@@ -391,11 +397,26 @@ $("renameProjBtn").addEventListener("click",()=>{const p=activeProject();const n
 $("delProjBtn").addEventListener("click",async()=>{const p=activeProject();if(!confirm(`'${p.name}' 프로젝트를 삭제할까요? 되돌릴 수 없습니다.`))return;delete STORE.projects[p.id];STORE.activeId=Object.keys(STORE.projects)[0]||null;if(!STORE.activeId)newProject("내 첫 프로젝트");saveStore();refreshProjectUI();await renderActiveProject();});
 $("saveBibleBtn").addEventListener("click",()=>{const p=activeProject();p.bible=$("bible").value;p.updatedAt=Date.now();saveStore();refreshProjectUI();$("bibleSaved").textContent="저장됨 ✓";setTimeout(()=>$("bibleSaved").textContent="",1500);});
 $("saveRefsBtn").addEventListener("click",()=>{const p=activeProject();p.cast=$("cast").value;p.setting=$("setting").value;p.updatedAt=Date.now();saveStore();refreshProjectUI();$("refsSaved").textContent="저장됨 ✓";setTimeout(()=>$("refsSaved").textContent="",1500);});
-$("renderStyle").addEventListener("change",async()=>{const p=activeProject();p.renderStyle=$("renderStyle").value;p.updatedAt=Date.now();saveStore();await renderActiveProject();});
+$("renderStyle").addEventListener("change",async()=>{const p=activeProject();p.renderStyle=$("renderStyle").value;p.updatedAt=Date.now();saveStore();updateArtSelection();await renderActiveProject();});
 $("artStyle").addEventListener("change",()=>{const p=activeProject();p.artStyle=$("artStyle").value;p.updatedAt=Date.now();saveStore();updateArtSelection();});
 $("clearScenesBtn").addEventListener("click",async()=>{const p=activeProject();if(!confirm("이 프로젝트의 콘티(씬/샷)를 모두 비울까요? 스타일 메모리는 유지됩니다."))return;p.scenes=[];p.lastSceneId=0;p.scriptSoFar="";p.updatedAt=Date.now();saveStore();refreshProjectUI();await renderActiveProject();});
 
 /* ============ PROMPTS (2-pass) ============ */
+// 전문가급 english_prompt 작성 사양 + 모범 예시(few-shot) — shotsPrompt/regenShotPrompt 공용
+const ENG_PROMPT_SPEC = `[english_prompt — 작성 규칙 · 매우 중요]
+영상 생성기(Runway/Kling/Sora/Veo)에 그대로 붙여넣어 '영화 한 장면'이 나오도록, 시네마틱하게 흐르는 영어 한 문단(약 55~100단어 — 영상툴이 끝까지 반영하는 한계 안에서 밀도 높게)으로 쓴다. 태그 나열·중복 금지. 아래 전문 촬영 요소를 한 문장 흐름 안에 우선순위대로 자연스럽게 녹여라(덜 중요한 건 과감히 생략해 간결하게):
+  • 피사체/외형: 스타일 메모리·등장인물 설정과 정확히 일치하는 구체적 묘사(나이·얼굴·헤어·의상·체형·표정). 영상툴은 클립마다 기억이 없으므로 매 프롬프트에서 다시 묘사한다.
+  • 카메라: 샷사이즈 + 앵글 + 카메라 높이 + 무빙(이유/동기와 함께, 예 'a slow dolly-in that tightens the tension') + 렌즈(mm) + 심도(shallow/deep focus)와 포커스 지점.
+  • 프레이밍/구도: 화면 배치(좌·우·삼분할), 헤드룸/리드룸, 인물의 시선 방향(eyeline)과 스크린 디렉션(좌→우 등 연속성), 전경·중경·후경의 깊이 레이어링.
+  • 연기/동작 변화: 정지가 아니라 클립 시작→끝의 변화를 동사로(예 'his grip tightens as her smile fades'). 모션의 속도·방향(slow-motion/drifting/sudden push-in).
+  • 조명: 키/필/림(백라이트)의 방향·질감·동기(창문/네온 등), 색온도, 시간대, 그림자의 성격.
+  • 컬러: 팔레트와 컬러 그레이딩 톤.
+  • 질감/분위기: 공기감(안개·먼지·빗방울·입자·연기), 필름 질감, 감정/무드.
+  • 매체 스타일 토큰: 위 [영상 스타일]을 반드시 반영.
+  • 문장 맨 끝에 'ambient audio: ...'로 환경음·효과음·음악을 영어로 묘사. 단, 인물의 '대사(말)'는 절대 넣지 마라 — 시스템이 한국어로 별도 처리한다.
+[목표 수준 예시 — 이 정도의 밀도·흐름을 지향]
+"Medium close-up at eye level on Minsu, a weary man in his late twenties with tousled black hair and a worn grey coat, seated by a rain-streaked cafe window in cold blue afternoon light; a slow 50mm dolly-in tightens on his face as his tired eyes lift from a cold cup of coffee and catch something off-screen left, his breath stalling and his grip loosening on the mug, shallow depth of field melting the warm amber cafe bokeh behind him into a soft midground glow, naturalistic side key light raking across one cheek while the window backlights his shoulder, muted teal-and-amber grade, quiet melancholic mood; ambient audio: rain tapping the glass, low cafe murmur, a faint melancholic piano."
+[언어 규칙] 100% 영어만. 한자·중국어·일본어·한글 금지(예 静止→static camera, 镜头→shot/lens). 한국어 대사는 english_prompt에 넣지 않는다.`;
 function breakdownPrompt(segment, bible, prevSummary, startId, refs, styleDir){
   return `너는 영화 현장의 조감독 겸 스크립트 슈퍼바이저다. 진행 중인 프로젝트에 [새 대본 조각]을 이어 붙인다.
 
@@ -406,8 +427,8 @@ ${refs?"[중요 — 사용자 지정] 아래 [사용자 지정 등장인물/배�
 작업:
 1) [새 대본 조각]을 촬영용 씬으로 분해한다. 씬 = 시간/장소 연속 단위. 씬 번호(id)는 ${startId}부터 시작.
 2) 새 대본 조각을 처음부터 끝까지 빠짐없이 다룬다.
-3) 각 씬 beats에 모든 행동·사건·대사 포인트를 순서대로 나열(빠짐없이).
-   [대사만 있는 경우] 지문/액션이 없고 대사만 주어져도, 대사의 맥락·감정·관계로부터 장소·시간·인물의 동작·표정·분위기를 적극적으로 추론해 시각적 비트로 채운다(예: 화자/리액션/거리감).
+3) 각 씬 beats에 모든 행동·사건·대사 포인트를 순서대로 나열(빠짐없이). 각 비트는 단순 요약이 아니라 '카메라에 보이는 그림'으로 적는다 — 누가/어디서/무엇을(동작·표정·시선·소품), 그리고 그 순간의 감정·서브텍스트를 한 줄에 담는다. 대사가 있는 비트는 화자와 리액션(듣는 인물의 반응)을 함께 적는다.
+   [대사만 있는 경우] 지문/액션이 없고 대사만 주어져도, 대사의 맥락·감정·관계로부터 장소·시간·인물의 동작·표정·거리감·시선·분위기를 전문 작가처럼 적극 추론해 시각적 비트로 채운다(밋밋한 토킹헤드 금지 — 공간·블로킹·감정 변화를 만든다).
 4) 슬러그라인은 "INT./EXT. 장소 - 시간".
 5) "style_bible"을 갱신해 반환: 기존 내용 + 사용자 지정 설정을 유지하고 새로 등장한 인물/장소/설정만 추가. 포함 항목 — 매체(실사/애니메이션) / 작품 톤&무드 / 비주얼·조명·색감·카메라 경향(영상 프롬프트 일관성용) / 등장인물(이름+외형+성격, 한 번 정하면 고정) / 반복 배경 / 영어 프롬프트 공통 스타일 토큰(위 [영상 스타일]의 토큰을 반드시 반영). 한국어로 쓰되 영어 스타일 토큰은 영어로.
 
@@ -430,11 +451,11 @@ ${segment}`;
 }
 function shotsPrompt(scene, density, bible, prevSummary, segment, refs, styleDir){
   const dens = density==="detailed"
-    ? "이 씬의 모든 비트(행동·대사·반응)를 샷으로 분해하라. 대화 장면은 두 인물을 함께 담은 투샷/오버더숄더로 구성하고(화자별로 쪼개지 말 것), 중요한 동작·소품은 인서트 샷을 추가하라. 실제 촬영 가능한 샷 리스트여야 한다. 대본에 지문/액션이 없고 대사만 있어도, 화자·감정·관계·서브텍스트로부터 장소·인물 동작·표정·카메라를 적극 추론해 시각화하라(밋밋한 토킹헤드 금지)."
+    ? "이 씬의 모든 비트(행동·대사·반응)를 샷으로 분해하라. 전문가의 커버리지처럼 구성한다: 씬 시작에 공간을 보여주는 설정샷(establishing/wide) → 대화는 두 인물을 함께 담은 투샷/오버더숄더(OTS)로(화자별로 쪼개지 말 것) → 감정이 고조되는 순간엔 인물별 클로즈업/리액션 샷 → 중요한 동작·소품은 인서트 샷. 샷 사이즈·앵글·렌즈·무빙을 의도적으로 변주해 단조롭지 않게 하고, 컷 연결의 리듬(정적 샷↔무빙, 와이드↔타이트)을 고려하라. 실제 촬영 가능한 샷 리스트여야 한다. 대본에 지문/액션이 없고 대사만 있어도, 화자·감정·관계·서브텍스트로부터 장소·블로킹·표정·시선·카메라를 적극 추론해 시각화하라(밋밋한 토킹헤드 금지)."
     : density==="light"
-    ? "이 씬의 핵심만 1~3개의 샷으로 압축하라."
-    : "이 씬을 자연스러운 편집 흐름의 샷들로 나눠라(과하지도 부족하지도 않게).";
-  return `너는 전문 스토리보드 아티스트 겸 촬영감독(DP)이다. 진행 중인 프로젝트의 [대상 씬]을 촬영용 샷 콘티로 만들어라.
+    ? "이 씬의 핵심 감정을 전달하는 1~3개의 샷으로 압축하되, 각 샷은 전문가 수준의 구도·조명·카메라 의도를 갖춰라."
+    : "이 씬을 자연스러운 편집 흐름의 샷들로 나눠라(과하지도 부족하지도 않게). 설정샷·투샷·리액션·인서트를 상황에 맞게 섞어 프로페셔널한 커버리지를 만든다.";
+  return `너는 칸·아카데미급 작품을 만들어 온 촬영감독(DP) 겸 스토리보드 아티스트다. 진행 중인 프로젝트의 [대상 씬]을, 실제 현장에서 바로 촬영 가능한 전문가 수준의 샷 콘티로 만들어라.
 
 [영상 스타일] ${styleDir||""}
 
@@ -443,20 +464,15 @@ function shotsPrompt(scene, density, bible, prevSummary, segment, refs, styleDir
 ${dens}
 
 각 샷에 전문 촬영 정보를 채운다. 샷넘버는 "${scene.id}A","${scene.id}B" 식.
-[대화 장면 규칙 — 매우 중요] 대화 장면은 두 인물을 '한 샷(투샷 또는 오버더숄더)'에 함께 담는다(샷을 화자별로 쪼개지 말 것). 단, 영상 AI가 한 명이 모든 대사를 말하지 않도록: (1) 두 인물의 외형을 뚜렷이 다르게 묘사하고 화면 위치(좌/우)를 지정한다, (2) characters 배열에 두 인물을 position(좌/우)과 함께 모두 넣는다, (3) dialogue 필드에는 화자 이름과 함께 순서대로 넣는다(예: 태형: "..." 승하: "..."), (4) english_prompt에 '두 사람이 번갈아 말하는 서로 다른 인물'임을 분명히 한다.
-english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙여넣을 최고 품질의 시네마틱 영어 프롬프트. 자연스러운 영어 한 문단(태그 나열 금지)으로 쓰되 다음을 반드시 모두 녹여라:
-  (1) 피사체와 외형 — 스타일 메모리/등장인물 설정과 정확히 일치하는 구체적 묘사,
-  (2) 클립 동안의 동작·연기 변화 — 정지가 아닌 수 초짜리 움직임을 동사로(예: "as the camera slowly pushes in, his grip tightens and her expression cracks"),
-  (3) 카메라 — 샷사이즈 + 앵글 + 무빙(dolly-in/pan/tracking 등) + 렌즈(mm),
-  (4) 구도/프레이밍과 깊이감(전경·후경),
-  (5) 조명 — 방향·질감·색온도·시간대,
-  (6) 컬러 팔레트/톤,
-  (7) 작화/매체 스타일 토큰(위 [영상 스타일] 반영),
-  (8) 감정·분위기,
-  (9) 모션 다이내믹스 — 움직임의 속도/방향(예: slow-motion, drifting, sudden), 그리고 클립의 시작→끝 변화,
-  (10) 환경음·효과음 — [대상 씬]의 음향(audio)을 영어로 번역해 "ambient audio: ..." 형태로 묘사(예: crashing waves, cold howling wind, tense string score). 단, 인물의 대사(말)는 여기에 넣지 마라.
-위 [대상 씬]의 구도(composition)·액션(action)·음향(audio)을 이 영어 묘사 안에 자연스럽게(전부 영어로) 포함시켜라.
-[언어 규칙 — 매우 중요] english_prompt는 100% 영어로만 작성한다. 한자·중국어·일본어 문자(예: 静止, 镜头)나 한글을 절대 섞지 마라 — 반드시 영어 단어를 써라(예: '静止' 금지 → 'static camera', '镜头' 금지 → 'shot/lens'). 한국어 대사는 시스템이 별도로 처리하므로 english_prompt 안에는 넣지 않는다.
+[대화 장면 규칙 — 매우 중요 · 샷/리버스 분할]
+콘티 프레임(characters/그림)은 두 인물을 한 샷(투샷/오버더숄더)에 함께 담아 위치(좌/우)와 외형 차이를 명확히 한다 — dialogue 필드에는 모든 화자의 대사를 순서대로 넣는다(예: 태형: "..." 승하: "...").
+그러나 영상 AI는 '한 클립에서 두 사람이 번갈아 말하는 것(립싱크)'을 못 한다. 그래서 2명 이상이 발화하는 샷은 반드시 "clips" 배열에 샷/리버스샷으로 쪼개 넣어라:
+  - clips의 각 항목 = 화자 '1명만' 말하고 상대는 듣기/리액션하는, 그 화자를 향한 OTS 또는 단독 구도의 '완결된' 시네마틱 영어 프롬프트. 실제 영화의 shot/reverse-shot처럼 두 컷이 시선·구도가 마주보게(180도선 유지) 한다.
+  - clips 순서는 dialogue의 발화 순서와 동일. 각 clip에 그 화자 이름(speaker)과 대사 한 줄(line, 따옴표 없이 한국어)을 넣는다.
+  - 발화자가 1명뿐이거나 대사가 없는 샷은 clips를 빈 배열([])로 둔다.
+  - 각 clip.english_prompt도 아래 [english_prompt 작성 규칙]을 똑같이 따른다(단 그 한 명만 말하도록, 상대는 말하지 않고 반응만).
+${ENG_PROMPT_SPEC}
+이 샷의 shot_size·angle·movement·lens·lighting·composition·action·audio가 위 english_prompt 안에 전부 영어로 일관되게 반영되어야 한다.
 
 순수 JSON만 출력. 코드펜스/설명 금지.
 {
@@ -467,7 +483,8 @@ english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙
       "angle":"eye-level|low|high|dutch|overhead|worms-eye 중 하나",
       "movement":"static|pan-left|pan-right|tilt-up|tilt-down|dolly-in|dolly-out|track-left|track-right|handheld|crane|zoom-in|zoom-out 중 하나",
       "lens":"18mm|24mm|35mm|50mm|85mm|135mm 중 하나",
-      "composition":"구도 메모(한국어, 짧게)",
+      "composition":"구도/프레이밍 메모(한국어, 짧게 — 예: 삼분할 우측 배치, 인물 시선 좌측, 전경에 흐릿한 머그)",
+      "lighting":"조명 메모(한국어, 짧게 — 예: 창측 자연광 역광, 차가운 색온도, 얼굴 한쪽 그림자)",
       "action":"이 샷에서 보이는 행동(한국어)",
       "dialogue":"이 샷의 대사(한국어). 없으면 빈 문자열",
       "audio":"음향/음악/효과음 메모(한국어). 없으면 빈 문자열",
@@ -476,7 +493,8 @@ english_prompt: Runway/Kling/Sora/Veo 같은 AI '영상' 생성기에 바로 붙
       "setting":"배경/시간(한국어, 짧게)",
       "props":["핵심 소품(한국어 0~3개)"],
       "characters":[{"name":"이름","position":"left|center-left|center|center-right|right","size":"far|mid|near","pose":"standing|sitting|walking|running|arms_up|pointing|lying|crouching","facing":"left|right|front"}],
-      "english_prompt":"Cinematic English prompt."
+      "english_prompt":"Cinematic English prompt.",
+      "clips":[{"speaker":"화자 이름","line":"그 화자의 대사(한국어, 따옴표 없이)","english_prompt":"이 화자 1명만 말하는 샷/리버스 컷의 완결된 시네마틱 영어 프롬프트"}]
     }
   ]
 }
@@ -501,7 +519,9 @@ function regenShotPrompt(scene, shot, bible, prevSummary, refs, styleDir){
 - 같은 씬·맥락·대사·샷 의도(역할/액션)는 유지하되 카메라·구도·연출·묘사를 개선한다. 샷넘버는 "${shot.shot_number||(scene.id+'A')}" 그대로.
 [영상 스타일] ${styleDir||""}
 [연속성] 아래 [스타일 메모리]/인물 설정과 외형·톤을 정확히 일치시킨다.${refs?" [사용자 지정 등장인물/배경]도 그대로 반영.":""}
-english_prompt 규칙: 최고 품질 시네마틱 영어 한 문단. 피사체·외형, 클립 동안의 동작(동사), 카메라(샷사이즈+앵글+무빙+렌즈mm), 구도/깊이감, 조명(방향·색온도·시간대), 컬러, 작화 스타일 토큰, 감정, 모션, 그리고 환경음을 영어로 'ambient audio: ...'로 포함. 100% 영어로만(한자·중국어·일본어·한글 금지, 예: 静止→static camera). 인물 대사(말)는 english_prompt에 넣지 마라(시스템이 한국어로 별도 처리).
+[대화 장면 — 샷/리버스 분할] 이 샷에서 2명 이상이 발화하면, 영상 AI가 한 클립에 두 사람을 번갈아 말하게 못 하므로 "clips" 배열에 화자별 샷/리버스샷으로 쪼개 넣어라(각 clip = 1명만 말하고 상대는 리액션, 그 화자를 향한 OTS/단독 구도의 완결된 영어 프롬프트, dialogue 순서대로). 1명 이하면 clips는 빈 배열([]).
+
+${ENG_PROMPT_SPEC}
 
 순수 JSON만 출력, "shots" 배열에 정확히 1개. 코드펜스/설명 금지.
 {
@@ -511,7 +531,8 @@ english_prompt 규칙: 최고 품질 시네마틱 영어 한 문단. 피사체·
     "angle":"eye-level|low|high|dutch|overhead|worms-eye 중 하나",
     "movement":"static|pan-left|pan-right|tilt-up|tilt-down|dolly-in|dolly-out|track-left|track-right|handheld|crane|zoom-in|zoom-out 중 하나",
     "lens":"18mm|24mm|35mm|50mm|85mm|135mm 중 하나",
-    "composition":"구도 메모(한국어)",
+    "composition":"구도/프레이밍 메모(한국어)",
+    "lighting":"조명 메모(한국어)",
     "action":"행동(한국어)",
     "dialogue":"대사(한국어). 없으면 빈 문자열",
     "audio":"음향/효과음(한국어). 없으면 빈 문자열",
@@ -520,7 +541,8 @@ english_prompt 규칙: 최고 품질 시네마틱 영어 한 문단. 피사체·
     "setting":"배경/시간(한국어)",
     "props":["핵심 소품(한국어 0~3개)"],
     "characters":[{"name":"이름","position":"left|center-left|center|center-right|right","size":"far|mid|near","pose":"standing|sitting|walking|running|arms_up|pointing|lying|crouching","facing":"left|right|front"}],
-    "english_prompt":"Cinematic English video prompt."
+    "english_prompt":"Cinematic English video prompt.",
+    "clips":[{"speaker":"화자 이름","line":"그 화자의 대사(한국어, 따옴표 없이)","english_prompt":"이 화자 1명만 말하는 샷/리버스 컷의 완결된 시네마틱 영어 프롬프트"}]
   }]
 }
 
@@ -532,14 +554,15 @@ ${prevSummary||"(없음)"}
 
 [씬] #${scene.id} ${scene.slug} — ${scene.synopsis||""}
 [현재 샷(개선 대상)]
-${JSON.stringify({shot_size:shot.shot_size,angle:shot.angle,movement:shot.movement,lens:shot.lens,composition:shot.composition,action:shot.action,dialogue:shot.dialogue,audio:shot.audio,setting:shot.setting,characters:shot.characters})}`;
+${JSON.stringify({shot_size:shot.shot_size,angle:shot.angle,movement:shot.movement,lens:shot.lens,composition:shot.composition,lighting:shot.lighting,action:shot.action,dialogue:shot.dialogue,audio:shot.audio,setting:shot.setting,characters:shot.characters})}`;
 }
 
 /* ============ API callers ============ */
 async function callClaude(key,model,prompt){
+  const maxTok=/claude-(3|2)[.\-]/i.test(model)?8192:16000;   // 3.x/2.x계열은 8192 상한, 4.x는 잘림 방지 위해 크게
   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
     headers:{"x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","content-type":"application/json"},
-    body:JSON.stringify({model,max_tokens:8192,messages:[{role:"user",content:prompt}]})});
+    body:JSON.stringify({model,max_tokens:maxTok,messages:[{role:"user",content:prompt}]})});
   if(!r.ok) throw new Error("Claude "+r.status+": "+(await r.text()));
   const d=await r.json(); return d.content.map(c=>c.text||"").join("");
 }
@@ -562,15 +585,40 @@ function callAPI(provider,key,model,prompt){
   if(provider==="gemini") return callGemini(key,model,prompt);
   return callOpenAI(key,model,prompt);
 }
+// 잘린 JSON을 닫아준다: 미완성 문자열/열린 괄호를 추적해 닫는 괄호를 채운다
+function closeOpenJSON(str){
+  let inStr=false,esc=false; const stack=[];
+  for(let i=0;i<str.length;i++){const c=str[i];
+    if(inStr){ if(esc)esc=false; else if(c==="\\")esc=true; else if(c==='"')inStr=false; continue; }
+    if(c==='"')inStr=true;
+    else if(c==="{")stack.push("}");
+    else if(c==="[")stack.push("]");
+    else if(c==="}"||c==="]")stack.pop();
+  }
+  let out=str.replace(/,\s*$/,"");
+  for(let i=stack.length-1;i>=0;i--) out+=stack[i];
+  return out;
+}
+// 토큰 한도로 잘린 출력에서 마지막으로 '완성된' 객체까지만 살려 파싱
+function salvageJSON(t){
+  let cut=t.lastIndexOf("}");
+  while(cut>0){
+    try{ return JSON.parse(closeOpenJSON(t.slice(0,cut+1))); }catch(_){}
+    cut=t.lastIndexOf("}",cut-1);
+  }
+  throw new Error("JSON 복구 실패");
+}
 function extractJSON(text){
   let t=String(text).trim().replace(/^```(json)?/i,"").replace(/```$/,"").trim();
-  const s=t.indexOf("{"),e=t.lastIndexOf("}");
-  if(s>=0&&e>s) t=t.slice(s,e+1);
-  try{ return JSON.parse(t); }
-  catch(e){
-    // LLM이 흔히 내는 trailing comma 보정 후 재시도 (정상 JSON은 위에서 이미 통과)
-    return JSON.parse(t.replace(/,(\s*[}\]])/g,"$1"));
-  }
+  const s=t.indexOf("{");
+  if(s>0) t=t.slice(s);                       // 앞쪽 설명 텍스트 제거
+  const e=t.lastIndexOf("}");
+  const sliced=(e>0)?t.slice(0,e+1):t;
+  try{ return JSON.parse(sliced); }catch(_){}
+  // LLM이 흔히 내는 trailing comma 보정 후 재시도
+  try{ return JSON.parse(sliced.replace(/,(\s*[}\]])/g,"$1")); }catch(_){}
+  // 토큰 한도로 잘린 경우: 완성된 부분까지 복구 (예: 마지막 샷만 잘림 → 나머지 샷은 살림)
+  return salvageJSON(t);
 }
 
 /* ============ SVG storyboard renderer ============ */
@@ -578,7 +626,7 @@ const POS_X={"left":0.2,"center-left":0.35,"center":0.5,"center-right":0.65,"rig
 const SIZE_MUL={"far":0.7,"mid":0.92,"near":1.18};
 // shot size -> figure scale & whether upper-body crop
 const SHOT_SCALE={EWS:0.42,WS:0.62,MWS:0.92,MS:1.5,MCU:2.1,CU:3.0,ECU:4.4,INSERT:0,POV:0,OTS:1.4,"2-SHOT":0.95};
-function esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
 function stickFigure(cx,baseY,scale,pose,facing,name,clipTop){
   const s=scale,headR=11*s,headCY=baseY-92*s,neck=headCY+headR,hip=baseY-38*s;
@@ -589,7 +637,7 @@ function stickFigure(cx,baseY,scale,pose,facing,name,clipTop){
   if(dir!==0) p+=`<line x1="${cx+dir*headR}" y1="${headCY}" x2="${cx+dir*(headR+6*s)}" y2="${headCY}" stroke="#111" stroke-width="2"/>`;
   if(pose==="lying"){
     p+=`<line x1="${cx-34*s}" y1="${baseY-8*s}" x2="${cx+30*s}" y2="${baseY-8*s}" stroke="#111" stroke-width="2"/>`;
-    if(name) p+=nameTag(cx,baseY,name,clipTop);
+    if(name) p+=nameTag(cx,baseY,name);
     return p;
   }
   let hipY=hip;
@@ -614,12 +662,11 @@ function stickFigure(cx,baseY,scale,pose,facing,name,clipTop){
   }else{
     p+=`<line x1="${cx}" y1="${hipY}" x2="${cx-10*s}" y2="${baseY}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${hipY}" x2="${cx+10*s}" y2="${baseY}" stroke="#111" stroke-width="2"/>`;
   }
-  if(name) p+=nameTag(cx,Math.min(baseY,baseY),name,clipTop,headCY);
+  if(name) p+=nameTag(cx,baseY,name);
   return p;
 }
-function nameTag(cx,baseY,name,clipTop,headCY){
-  // place name under feet if inside frame, else above head
-  let y=baseY+18;
+function nameTag(cx,baseY,name){
+  const y=baseY+18;   // 발 밑에 이름 표시
   return `<text x="${cx}" y="${y}" text-anchor="middle" font-size="12" font-family="sans-serif" fill="#111">${esc(name)}</text>`;
 }
 
@@ -726,10 +773,10 @@ function svgToPng(svgStr,scale,W,H){
 /* ============ render board ============ */
 let CURRENT=null;
 function fld(lbl,val){return val?`<div class="field"><span class="lbl">${lbl}</span>${esc(val)}</div>`:"";}
-// 매체별 퀄리티 부스터 토큰 (확산 기반 영상툴 품질 향상)
+// 매체별 품질 토큰 — 짧게만. 영상 모델은 SD식 긴 부스터 나열(masterpiece/4K/ultra-detailed…)을 거의 무시하고 핵심을 희석시키므로 핵심 룩 4개만.
 function qualityBoost(rs){
-  if(rs==="live") return "photorealistic, ultra-detailed, cinematic color grading, naturalistic lighting, shallow depth of field, shot on ARRI Alexa, razor-sharp focus, subtle film grain, 4K, professional cinematography";
-  return "masterpiece, best quality, ultra-detailed, clean crisp lineart, vibrant consistent color palette, smooth fluid character animation, expressive emotive acting, cinematic lighting, professional studio anime production, 4K";
+  if(rs==="live") return "cinematic, photorealistic, shallow depth of field, natural lighting";
+  return "high-quality anime, clean lineart, smooth fluid animation, expressive acting";
 }
 // english_prompt에서 한자/중국어/일본어·전각 문자 글리치를 제거 (예: '静止camera' → 'camera')
 function stripCJK(s){
@@ -758,7 +805,9 @@ function sanitizeSafe(s){
 // 대사 길이·액션·카메라 무빙으로 클립 길이(초)를 추정 (모델 임의값보다 현실적)
 function computeDuration(sh){
   let d=1.5;
-  const syl=(String(sh.dialogue||"").match(/[가-힣]/g)||[]).length; // 한국어 음절 수
+  const turns=parseDialogue(sh.dialogue);     // 화자 이름(예: "민수:")은 빼고 실제 대사만 계산
+  const spoken=turns.length?turns.map(t=>t.line).join(""):String(sh.dialogue||"").replace(/[0-9A-Za-z가-힣]{1,16}\s*[:：]/g,"");
+  const syl=(spoken.match(/[가-힣]/g)||[]).length; // 한국어 음절 수
   if(syl) d += syl/5.0;                       // 말하기 ~5음절/초
   if(sh.action && String(sh.action).trim()) d += 1.2;
   if(sh.movement && sh.movement!=="static") d += 1.0;
@@ -772,36 +821,60 @@ function parseDialogue(raw){
   while((m=re.exec(String(raw||"")))) turns.push({name:m[1].trim(), line:m[2].trim()});
   return turns;
 }
-// 모든 항목(구도·카메라·음향·대사) + 부스터를 영어 영상 프롬프트로 합친다
-function enrichPrompt(sh, rs){
-  const p=sanitizeSafe(stripCJK((sh.english_prompt||"").trim()));
+// 생성 당시 스타일로 박힌 토큰이 현재 스타일과 충돌하지 않도록 반대 매체 토큰을 제거
+// (예: 실사로 생성 후 애니로 전환하면 'photorealistic'이 남아 부스터의 anime와 모순됨)
+function stripStyleConflict(s, rs){
+  const liveSig=[/\bphoto-?realistic\b/gi,/\bphotoreal\b/gi,/\blive[- ]action\b/gi,/\bcinematic film still\b/gi,
+    /\bshot on (a )?(cinema camera|ARRI[^,.]*|RED[^,.]*)/gi,/\b(ARRI|RED) ?(Alexa|camera)?\b/gi,
+    /\brealistic lighting and textures\b/gi,/\b35 ?mm film\b/gi,/\bnaturalistic\b/gi,/\breal[- ]life\b/gi];
+  const animeSig=[/\banime style\b/gi,/\b2D cel-?shaded( animation)?\b/gi,/\bcel[- ]shaded\b/gi,
+    /\bhand-?drawn( animation)?\b/gi,/\bstudio-quality Japanese animation\b/gi,/\bvibrant anime aesthetic\b/gi,
+    /\bsmooth animated motion\b/gi,/\b2D animation\b/gi,/\b(anime|manga|cartoon|illustration|illustrated)\b/gi];
+  const list=rs==="live"?animeSig:liveSig;
+  let out=String(s);
+  for(const re of list) out=out.replace(re,"");
+  return out.replace(/\s+([,.;:!?])/g,"$1").replace(/([,;:]\s*){2,}/g,", ")
+            .replace(/^[\s,;:.]+/,"").replace(/\s{2,}/g," ").trim();
+}
+// 대사 한 줄을 영어 라벨과 함께 만든다 (음성·립싱크 지원 툴용). 한국어 대사 원문은 그대로 보존.
+function dialogueLabel(turns, raw){
+  if(turns&&turns.length>=2) return "Spoken Korean dialogue, separate characters in turn — "+turns.map(t=>`${t.name}: "${t.line}"`).join(", ");
+  if(turns&&turns.length===1) return `Spoken Korean dialogue, natural lip-sync — ${turns[0].name}: "${turns[0].line}"`;
+  if(raw&&String(raw).trim()) return "Spoken Korean dialogue, natural lip-sync: "+String(raw).replace(/[.\s]+$/,"");
+  return "";
+}
+// 본문 + (카메라 안전망) + 품질 토큰 + 대사 한 줄 을 '간결한' 영상 프롬프트로 합친다.
+// withCam: 단일 샷이면 무빙·렌즈 보강. clip(샷/리버스)은 자체 완결 묘사라 보강 생략.
+function composeVideoPrompt(visual, rs, dlgLabel, camSh){
+  const p=sanitizeSafe(stripStyleConflict(stripCJK((visual||"").trim()),rs));
   const lp=p.toLowerCase();
   const trim=s=>String(s).replace(/[.\s]+$/,"");
-  const cam=[];
-  if(sh.shot_size && !lp.includes(String(sh.shot_size).toLowerCase())) cam.push(sh.shot_size+" shot");
-  if(sh.angle && !lp.includes(String(sh.angle).toLowerCase())) cam.push(sh.angle+" angle");
-  if(sh.movement && sh.movement!=="static" && !lp.includes(String(sh.movement).toLowerCase())) cam.push(sh.movement+" camera movement");
-  if(sh.lens && !lp.includes(String(sh.lens).toLowerCase())) cam.push(sh.lens+" lens");
   const parts=[];
   if(p) parts.push(p);
-  if(cam.length) parts.push("Camera: "+cam.join(", "));
-  parts.push(qualityBoost(rs));                                   // 부스터
-  // 구도·액션은 위 영어 묘사(english_prompt)에 이미 영어로 포함되므로 한국어 중복을 넣지 않는다(영상툴 품질 저하 방지).
-  // 대사·음향만 음성/자막 지원 툴용으로 영어 라벨과 함께 맨 뒤에 둔다.
-  // 음향(SFX)은 모델이 english_prompt 안에 영어로 녹이므로 여기서 한국어로 덧붙이지 않는다.
-  // 대사는 한국어로 발화. 화자가 둘 이상이면 '서로 다른 인물'임을 명시해 한 명이 다 말하지 않게 한다.
-  if(sh.dialogue && !p.includes(sh.dialogue)){
-    const turns=parseDialogue(sh.dialogue);
-    if(turns.length>=2){
-      const lines=turns.map((t,i)=>`Speaker ${String.fromCharCode(65+i)} = ${t.name} (a distinct individual, different face/voice) says aloud in Korean: "${t.line}"`).join("; then ");
-      parts.push(`This shot has ${turns.length} DIFFERENT characters speaking in turn — they are separate people, NOT one person; each is lip-synced in Korean. ${lines}. Do not let a single character speak all the lines`);
-    } else if(turns.length===1){
-      parts.push(`Only ${turns[0].name} speaks in this shot, aloud in Korean with natural lip-sync: "${turns[0].line}". No other character speaks here`);
-    } else {
-      parts.push('The on-screen character speaks this line aloud in KOREAN (natural lip-sync): '+trim(sh.dialogue));
-    }
+  if(camSh){ // 카메라 안전망: 본문에서 빠지기 쉬운 무빙·렌즈만 보강
+    const cam=[];
+    if(camSh.movement && camSh.movement!=="static" && !lp.includes(String(camSh.movement).toLowerCase())) cam.push(camSh.movement);
+    if(camSh.lens && !lp.includes(String(camSh.lens).toLowerCase())) cam.push(camSh.lens+" lens");
+    if(cam.length) parts.push("Camera: "+cam.join(", "));
   }
+  // 품질 토큰: 본문에 이미 있는 건 빼고 핵심만 짧게(영상툴은 긴 부스터를 무시·희석시킴)
+  const boost=qualityBoost(rs).split(", ").filter(t=>!lp.includes(t.toLowerCase().split(" ").pop()));
+  if(boost.length) parts.push(boost.join(", "));
+  if(dlgLabel && !p.includes(dlgLabel)) parts.push(dlgLabel);
   return parts.map(x=>trim(x)).filter(Boolean).join(". ")+".";
+}
+// 샷 하나에서 '영상 생성용 프롬프트 목록'을 만든다.
+// 2명 이상 발화(clips 존재) → 화자별 샷/리버스 클립으로 분리. 그 외 → 단일 프롬프트 1개.
+function enrichPrompts(sh, rs){
+  const clips=Array.isArray(sh.clips)?sh.clips.filter(c=>c&&(c.english_prompt||c.line)):[];
+  if(clips.length>=2){
+    return clips.map((c,i)=>{
+      const line=String(c.line||"").replace(/^["“”'']+|["“”'']+$/g,"").trim();
+      const dlg=line?`Spoken Korean dialogue, natural lip-sync — ${c.speaker||("화자"+(i+1))}: "${line}"`:"";
+      return {label:`Clip ${i+1} · ${c.speaker||("화자"+(i+1))} 발화`, text:composeVideoPrompt(c.english_prompt||sh.english_prompt, rs, dlg, null)};
+    });
+  }
+  return [{label:"", text:composeVideoPrompt(sh.english_prompt, rs, dialogueLabel(parseDialogue(sh.dialogue), sh.dialogue), sh)}];
 }
 const STYLE_LABEL={live:"🎬 실사",anime:"🎨 애니메이션"};
 async function renderBoard(data){
@@ -824,7 +897,14 @@ async function renderBoard(data){
     for(let si=0; si<shots.length; si++){
       const sh=shots[si];
       const png=await svgToPng(shotSVG(sh,aspect),2,SW,SH);
-      const fullPrompt=enrichPrompt(sh, data.renderStyle);
+      const prompts=enrichPrompts(sh, data.renderStyle);
+      const split=prompts.length>1;
+      const promptBoxes=(split?`<div class="hint" style="margin:10px 0 4px;">🎬 대화 장면 — <b>샷/리버스로 분리</b>됨. 각 클립을 영상 AI에 <b>따로</b> 생성한 뒤 편집에서 번갈아 붙이세요(클립당 1명만 말함).</div>`:"")
+        +prompts.map((pr,pi)=>`
+          <div class="prompt-box">
+            <div class="plabel"><span>${split?"🎬 "+esc(pr.label):"🎬 영상 생성용 프롬프트"}</span><button class="copy-btn pos" data-pi="${pi}">복사</button></div>
+            <code>${esc(pr.text)}</code>
+          </div>`).join("");
       const card=document.createElement("div"); card.className="shot-card"+(aspect==="9:16"?" vert":(aspect==="1:1"?" sq":""));
       const props=(sh.props&&sh.props.length)?`<span class="tag">소품 ${sh.props.map(esc).join(", ")}</span>`:"";
       card.innerHTML=`
@@ -842,16 +922,13 @@ async function renderBoard(data){
             <button class="regen-btn" title="이 샷만 다시 생성">🔄 다시</button>
           </div>
           ${fld("구도",sh.composition)}
+          ${fld("조명",sh.lighting)}
           ${fld("액션",sh.action)}
           ${sh.dialogue?`<div class="field dlg"><span class="lbl">대사</span>“${esc(sh.dialogue)}”</div>`:""}
           ${fld("음향",sh.audio)}
-          <div class="prompt-box">
-            <div class="plabel"><span>🎬 영상 생성용 프롬프트</span><button class="copy-btn pos">복사</button></div>
-            <code>${esc(fullPrompt)}</code>
-          </div>
+          ${promptBoxes}
         </div>`;
-      const pb=card.querySelector(".copy-btn.pos");
-      pb.onclick=()=>copyText(fullPrompt,pb);
+      [...card.querySelectorAll(".copy-btn.pos")].forEach(b=>{const pi=+b.getAttribute("data-pi");b.onclick=()=>copyText(prompts[pi].text,b);});
       const rb=card.querySelector(".regen-btn");
       rb.onclick=()=>regenerateShot(sc, si, rb);
       board.appendChild(card);
@@ -943,7 +1020,7 @@ $("genBtn").addEventListener("click",async()=>{
   proj.bible=$("bible").value;            // 사용자가 수동 수정한 메모리 반영
   proj.cast=$("cast").value;              // 사용자 지정 등장인물
   proj.setting=$("setting").value;        // 사용자 지정 배경
-  proj.renderStyle=$("renderStyle").value;// 실사/애니/ BL
+  proj.renderStyle=$("renderStyle").value;// 실사/애니
   proj.artStyle=$("artStyle").value;      // 그림체
   const refs=refsBlock(proj.cast,proj.setting);
   const styleDir=styleDirective(proj.renderStyle)+artDirective(proj.renderStyle,proj.artStyle);
